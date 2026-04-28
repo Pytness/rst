@@ -1,0 +1,15 @@
+pub struct ImageList {
+    pub next: *const ImageList,
+    pub prev: *const ImageList,
+    pub pixels: Vec<u8>,
+    pub pixmap: Option<()>,
+    pub clipmask: Option<()>,
+    pub width: i32,
+    pub height: i32,
+    pub x: i32,
+    pub y: i32,
+    pub cols: i32,
+    pub cw: i32,
+    pub ch: i32,
+    pub transparent: bool,
+}
