@@ -4,6 +4,7 @@ mod glyph;
 mod graphics;
 mod image;
 mod macros;
+mod sixel;
 mod terminal;
 mod win;
 mod xlib;
