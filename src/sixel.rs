@@ -143,6 +143,12 @@ impl SixelParser {
             image: SixelImage::new(1, 1, fgcolor, bgcolor, use_private_register),
         }
     }
+
+    pub fn set_default_color(&mut self) {
+        self.image.set_default_color();
+    }
+
+    pub fn finalize() {}
 }
 
 const fn sixel_rgb(r: u8, g: u8, b: u8) -> u32 {
