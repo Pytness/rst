@@ -90,7 +90,7 @@ pub enum ParseState {
     Error = 6,
 }
 
-pub struct ParserContext {
+pub struct SixelParser {
     state: ParseState,
     pos_x: usize,
     pos_y: usize,
@@ -112,20 +112,50 @@ pub struct ParserContext {
     image: SixelImage,
 }
 
+impl SixelParser {
+    pub fn new(
+        transparent: bool,
+        fgcolor: u32,
+        bgcolor: u32,
+        use_private_register: bool,
+        cell_width: usize,
+        cell_height: usize,
+    ) -> Self {
+        SixelParser {
+            state: ParseState::Esc,
+            pos_x: 0,
+            pos_y: 0,
+            max_x: 0,
+            max_y: 0,
+            attributed_pan: 2,
+            attributed_pad: 1,
+            attributed_ph: 0,
+            attributed_pv: 0,
+            transparent,
+            repeat_count: 1,
+            color_index: 16,
+            bgindex: 0,
+            grid_width: cell_width,
+            grid_height: cell_height,
+            nparams: 0,
+            param: 0,
+            params: [0; DECSIXEL_PARAMS_MAX],
+            image: SixelImage::new(1, 1, fgcolor, bgcolor, use_private_register),
+        }
+    }
+}
+
 const fn sixel_rgb(r: u8, g: u8, b: u8) -> u32 {
     255 << 24 | (r as u32) << 16 | (g as u32) << 8 | (b as u32)
 }
 
-const fn sixel_palval(n: u8, a: u8, m: u8) -> u8 {
-    n * a + (m / 2) / m
+/// Maps a percentage value (0-100) to a u8 value (0-255)
+const fn percent_to_u8(value: u8) -> u8 {
+    ((value as u16 * 255 + 50) / 100) as u8
 }
 
 const fn sixel_xrgb(r: u8, g: u8, b: u8) -> u32 {
-    sixel_rgb(
-        sixel_palval(r, 255, 100),
-        sixel_palval(g, 255, 100),
-        sixel_palval(b, 255, 100),
-    )
+    sixel_rgb(percent_to_u8(r), percent_to_u8(g), percent_to_u8(b))
 }
 
 const fn sixel_gray(n: u8) -> u32 {
@@ -152,7 +182,9 @@ const SIXEL_DEFAULT_COLOR_TABLE: [u32; 16] = [
 ];
 
 type ImageListPtr = *const ImageList;
-pub fn scroll_images(images: &ImageListPtr, n: usize) {
+type ImageListMutPtr = *mut ImageList;
+
+pub fn scroll_images(images: &mut *mut ImageList, n: usize) {
     // ImageList *im, *next;
     // int top = 0;
     //
@@ -168,10 +200,10 @@ pub fn scroll_images(images: &ImageListPtr, n: usize) {
     // 	}
     // }
 
-    let mut im: *const ImageList = *images;
-    let mut next: *const ImageList;
+    let mut im: *mut ImageList = *images;
+    let mut next: *mut ImageList;
 
-    while let Some(image) = unsafe { im.as_ref() } {
+    while let Some(image) = unsafe { im.as_mut() } {
         next = image.next;
         image.y += n as i32;
 
@@ -183,7 +215,7 @@ pub fn scroll_images(images: &ImageListPtr, n: usize) {
     }
 }
 
-pub fn delete_image(images: &ImageListPtr, image: &ImageList) {
+pub fn delete_image(images: &mut *mut ImageList, image: &ImageList) {
     unsafe {
         if !image.prev.is_null() {
             (*image.prev).next = image.next;
@@ -191,19 +223,22 @@ pub fn delete_image(images: &ImageListPtr, image: &ImageList) {
             *images = image.next;
         }
 
-        if (!image.next.is_null()) {
+        if !image.next.is_null() {
             (*image.next).prev = image.prev;
         }
 
-        if (image.pixmap.is_some()) {
+        if image.pixmap.is_some() {
             // free pixmap
+            todo!();
         }
 
-        if (image.clipmask.is_some()) {
+        if image.clipmask.is_some() {
             // free clipmask
+            todo!();
         }
 
         // free image.pixels
         // free image
+        todo!();
     }
 }

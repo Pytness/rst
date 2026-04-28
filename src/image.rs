@@ -1,6 +1,6 @@
 pub struct ImageList {
-    pub next: *const ImageList,
-    pub prev: *const ImageList,
+    pub next: *mut ImageList,
+    pub prev: *mut ImageList,
     pub pixels: Vec<u8>,
     pub pixmap: Option<()>,
     pub clipmask: Option<()>,
