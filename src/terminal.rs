@@ -560,6 +560,27 @@ impl Term {
                 tsetimgdiacriticcount(gp, 3);
                 tsetisclassicplaceholder(gp, 1);
             }
+
+            if do_not_move_cursor && y == self.row - 1 {
+                break;
+            }
+
+            if row != rows - 1 {
+                self.tnewline(0);
+            }
+        }
+
+        if do_not_move_cursor {
+            self.tmoveto(self.c.x, self.c.y - rows + 1);
+        } else {
+            // Move the cursor beyond the last column, as required by the
+            // protocol. If the cursor goes beyond the screen edge, insert a
+            // newline to match the behavior of kitty.
+            if self.c.x + cols >= self.col {
+                self.tnewline(1);
+            } else {
+                self.tmoveto(self.c.x + cols, self.c.y);
+            }
         }
     }
 
