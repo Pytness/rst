@@ -1,4 +1,55 @@
-use crate::image::ImageList;
+use std::collections::BTreeMap;
+use std::hash::Hash;
+use std::sync::atomic::AtomicUsize;
+
+static mut IMAGE_ID: AtomicUsize = AtomicUsize::new(0);
+static mut IMAGE_LIST: BTreeMap<usize, ImageList> = BTreeMap::new();
+
+fn get_image_list() -> &'static mut BTreeMap<usize, ImageList> {
+    unsafe { &mut IMAGE_LIST }
+}
+
+fn get_next_image_id() -> usize {
+    unsafe { IMAGE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst) }
+}
+
+fn add_image(image: ImageList) {
+    let id = get_next_image_id();
+    let mut image = image;
+    image.id = id;
+
+    get_image_list().insert(id, image);
+}
+
+fn delete_image(image: ImageList) {
+    get_image_list().remove(&image.id);
+}
+
+fn delete_image_by_id(id: usize) {
+    get_image_list().remove(&id);
+}
+
+#[derive(Default, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ImageList {
+    id: usize,
+    pub pixels: Vec<u8>,
+    pub pixmap: Option<()>,
+    pub clipmask: Option<()>,
+    pub width: i32,
+    pub height: i32,
+    pub x: i32,
+    pub y: i32,
+    pub cols: i32,
+    pub cw: i32,
+    pub ch: i32,
+    pub transparent: bool,
+}
+
+impl Hash for ImageList {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
 
 const DECSIXEL_PARAMS_MAX: usize = 16;
 const DECSIXEL_PALETTE_MAX: usize = 1024;
@@ -187,64 +238,21 @@ const SIXEL_DEFAULT_COLOR_TABLE: [u32; 16] = [
     sixel_xrgb(80, 80, 80), /* 15 Gray 75% */
 ];
 
-type ImageListPtr = *const ImageList;
-type ImageListMutPtr = *mut ImageList;
+pub fn scroll_images(n: usize) {
+    let mut to_delete = Vec::new();
 
-pub fn scroll_images(images: &mut *mut ImageList, n: usize) {
-    // ImageList *im, *next;
-    // int top = 0;
-    //
-    // for (im = term.images; im; im = next) {
-    // 	next = im->next;
-    // 	im->y += n;
-    //
-    // 	/* check if the current sixel has exceeded the maximum
-    // 	 * draw distance, and should therefore be deleted */
-    // 	if (im->y < top) {
-    // 		// fprintf(stderr, "im@0x%08x exceeded maximum distance\n");
-    // 		delete_image(im);
-    // 	}
-    // }
-
-    let mut im: *mut ImageList = *images;
-    let mut next: *mut ImageList;
-
-    while let Some(image) = unsafe { im.as_mut() } {
-        next = image.next;
+    for image in get_image_list().values_mut() {
         image.y += n as i32;
 
         if image.y < 0 {
-            delete_image(images, image);
+            // fprintf(stderr, "im@0x%08x exceeded maximum distance\n");
+            to_delete.push(image.id);
         }
-
-        im = next;
     }
+
+    to_delete.into_iter().for_each(|id| {
+        delete_image_by_id(id);
+    });
 }
 
-pub fn delete_image(images: &mut *mut ImageList, image: &ImageList) {
-    unsafe {
-        if !image.prev.is_null() {
-            (*image.prev).next = image.next;
-        } else {
-            *images = image.next;
-        }
-
-        if !image.next.is_null() {
-            (*image.next).prev = image.prev;
-        }
-
-        if image.pixmap.is_some() {
-            // free pixmap
-            todo!();
-        }
-
-        if image.clipmask.is_some() {
-            // free clipmask
-            todo!();
-        }
-
-        // free image.pixels
-        // free image
-        todo!();
-    }
-}
+pub fn image_buffer_resize(image: &mut SixelImage, width: usize, height: usize) {}
