@@ -1,6 +1,11 @@
+use crate::boxdraw::boxdraw::isboxdraw;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::{BETWEEN, config};
 use bitflags::bitflags;
+
+const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
+const IMAGE_PLACEHOLDER_CHAR: char = 0x10EEEE as char;
+const IMAGE_PLACEHOLDER_CHAR_OLD: char = 0xEEEE as char;
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,14 +35,16 @@ bitflags! {
     }
 }
 
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 enum Charset {
-    CS_GRAPHIC0,
-    CS_GRAPHIC1,
-    CS_UK,
-    CS_USA,
-    CS_MULTI,
-    CS_GER,
-    CS_FIN,
+    #[default]
+    CS_GRAPHIC0 = 0,
+    CS_GRAPHIC1 = 1,
+    CS_UK = 2,
+    CS_USA = 3,
+    CS_MULTI = 4,
+    CS_GER = 5,
+    CS_FIN = 6,
 }
 
 enum EscapeState {
@@ -147,8 +154,8 @@ pub struct Term {
     bot: usize,
     mode: TermMode,
     esc: u32,
-    trantbl: [u8; 4],
-    charset: u32,
+    trantbl: [Charset; 4],
+    charset: usize,
     icharset: u32,
     tabs: Vec<usize>,
     images: Vec<Image>,
@@ -259,10 +266,10 @@ impl Term {
         self.bot = self.row - 1;
         self.mode = TermMode::MODE_WRAP | TermMode::MODE_UTF8;
 
-        self.trantbl = [Charset::CS_USA as u8; 4];
+        self.trantbl = [Charset::CS_USA; 4];
         self.charset = 0;
 
-        for i in 0..2 {
+        for _ in 0..2 {
             self.tmoveto(0, 0);
             self.tcursor(CursorMovement::CURSOR_SAVE);
             self.tclearregion(0, 0, self.col - 1, self.row - 1);
@@ -409,6 +416,153 @@ impl Term {
         self.c.y = y.max(miny).min(maxy);
     }
 
+    pub fn tsetchar(&mut self, u: char, attr: &Glyph, x: usize, y: usize) {
+        #[rustfmt::skip]
+        const VT100_0: [char; 62] = [
+	        /* 0x41 - 0x7e */
+	        '↑', '↓', '→', '←', '█', '▚', '☃',      /* A - G */
+	        0,   0,   0,   0,   0,   0,   0,   0,   /* H - O */
+	        0,   0,   0,   0,   0,   0,   0,   0,   /* P - W */
+	        0,   0,   0,   0,   0,   0,   0,   ' ', /* X - _ */
+	        '◆', '▒', '␉', '␌', '␍', '␊', '°', '±', /* ` - g */
+	        '␤', '␋', '┘', '┐', '┌', '└', '┼', '⎺', /* h - o */
+	        '⎻', '─', '⎼', '⎽', '├', '┤', '┴', '┬', /* p - w */
+	        '│', '≤', '≥', 'π', '≠', '£', '·',      /* x - ~ */
+	];
+
+        // The table is proudly stolen from rxvt (and from st)
+
+        if self.trantbl[self.charset] == Charset::CS_GRAPHIC0 && BETWEEN!(u, 'A', '~') {
+            self.line[y][x].u = VT100_0[(u as usize) - 0x41];
+        }
+
+        if self.line[y][x].mode.contains(GlyphAttribute::ATTR_WIDE) {
+            if x + 1 < self.col {
+                self.line[y][x + 1].u = ' ';
+                self.line[y][x + 1].mode &= !GlyphAttribute::ATTR_WDUMMY;
+            }
+        } else if self.line[y][x].mode.contains(GlyphAttribute::ATTR_WDUMMY) {
+            self.line[y][x - 1].u = ' ';
+            self.line[y][x - 1].mode &= !GlyphAttribute::ATTR_WDUMMY;
+        }
+
+        let is_classic_placeholder = tgetisclassicplaceholder(&self.line[y][x]);
+
+        if u == ' '
+            && self.line[y][x].mode.contains(GlyphAttribute::ATTR_IMAGE)
+            && is_classic_placeholder
+        {
+            self.line[y][x].bg = attr.bg;
+            self.dirty[y] = true;
+            return;
+        }
+
+        self.dirty[y] = true;
+        self.line[y][x] = *attr;
+        self.line[y][x].u = u;
+
+        if u == IMAGE_PLACEHOLDER_CHAR || u == IMAGE_PLACEHOLDER_CHAR_OLD {
+            self.line[y][x].u = 0 as char;
+            self.line[y][x].mode.insert(GlyphAttribute::ATTR_IMAGE);
+        } else if isboxdraw(u) {
+            self.line[y][x].mode.insert(GlyphAttribute::ATTR_BOXDRAW);
+        }
+    }
+
+    pub fn tclearregion(&mut self, x1: usize, y1: usize, x2: usize, y2: usize) {
+        let (x1, x2) = if x1 > x2 { (x2, x1) } else { (x1, x2) };
+        let (y1, y2) = if y1 > y2 { (y2, y1) } else { (y1, y2) };
+
+        let x1 = x1.min(self.col - 1);
+        let x2 = x2.min(self.col - 1);
+        let y1 = y1.min(self.row - 1);
+        let y2 = y2.min(self.row - 1);
+
+        for y in y1..=y2 {
+            self.dirty[y] = true;
+
+            for x in x1..=x2 {
+                if self.selected(x, y) {
+                    self.selclear();
+                }
+
+                let gp = &mut self.line[y][x];
+
+                gp.fg = self.c.attr.fg;
+                gp.bg = self.c.attr.bg;
+                gp.decoration = self.c.attr.decoration;
+                gp.mode = GlyphAttribute::empty();
+                gp.u = ' ';
+            }
+        }
+    }
+
+    /// Fills a rectangle area with an image placeholder. The starting point is the
+    /// cursor. Adds empty lines if needed. The placeholder will be marked as
+    /// classic.
+    pub fn tcreateimgplaceholder(
+        &mut self,
+        image_id: u32,
+        placement_id: usize,
+        cols: usize,
+        rows: usize,
+        do_not_move_cursor: bool,
+        text_underneath: Option<&[Glyph]>,
+    ) {
+        for row in 0..rows {
+            let y = self.c.y;
+            self.dirty[y] = true;
+
+            for col in 0..cols {
+                let x = self.c.x + col;
+
+                if x >= self.col {
+                    break;
+                }
+
+                let gp = &mut self.line[y][x];
+
+                if self.selected(x, y) {
+                    self.selclear();
+                }
+
+                if let Some(text_underneath) = text_underneath {
+                    let mut to_save = gp;
+
+                    // If there is already a classic placeholder,
+                    // use the text underneath it. This will leave
+                    // holes in images, but at least we are
+                    // guaranteed to restore the original text.
+
+                    if gp.mode.contains(GlyphAttribute::ATTR_IMAGE) && tgetisclassicplaceholder(gp)
+                    {
+                        let under = gr_get_glyph_underneath_image(
+                            tgetimgid(gp),
+                            tgetimgplacementid(gp),
+                            tgetimgcol(gp),
+                            tgetimgrow(gp),
+                        );
+
+                        if let Some(under) = under {
+                            // to_save = under;
+                        }
+                    }
+
+                    text_underneath[cols * row + col] = *to_save;
+                }
+
+                gp.mode = GlyphAttribute::ATTR_IMAGE;
+                gp.u = 0 as char;
+                tsetimgrow(gp, row + 1);
+                tsetimgcol(gp, col + 1);
+                tsetimgid(gp, image_id);
+                tsetimgplacementid(gp, placement_id);
+                tsetimgdiacriticcount(gp, 3);
+                tsetisclassicplaceholder(gp, 1);
+            }
+        }
+    }
+
     pub fn tresize(&mut self, col: usize, row: usize) {
         let minrow = row.min(self.row);
         let mincol = col.min(self.col);
@@ -451,34 +605,6 @@ impl Term {
 
         self.top = t;
         self.bot = b;
-    }
-
-    fn tclearregion(&mut self, x1: usize, y1: usize, x2: usize, y2: usize) {
-        let (x1, x2) = if x1 > x2 { (x2, x1) } else { (x1, x2) };
-        let (y1, y2) = if y1 > y2 { (y2, y1) } else { (y1, y2) };
-
-        let x1 = x1.min(self.col - 1);
-        let x2 = x2.min(self.col - 1);
-        let y1 = y1.min(self.row - 1);
-        let y2 = y2.min(self.row - 1);
-
-        for y in y1..=y2 {
-            self.dirty[y] = true;
-
-            for x in x1..=x2 {
-                if self.selected(x, y) {
-                    self.selclear();
-                }
-
-                let gp = &mut self.line[y][x];
-
-                gp.fg = self.c.attr.fg;
-                gp.bg = self.c.attr.bg;
-                gp.decoration = self.c.attr.decoration;
-                gp.mode = GlyphAttribute::empty();
-                gp.u = ' ';
-            }
-        }
     }
 
     fn selclear(&mut self) {
@@ -592,4 +718,99 @@ impl Term {
     fn tdeleteimages(&self) {
         todo!()
     }
+}
+
+fn tgetimgrow(g: &Glyph) -> u32 {
+    g.u as u32 & 0x1ff
+}
+
+fn tgetimgcol(g: &Glyph) -> u32 {
+    (g.u as u32 >> 9) & 0x1ff
+}
+
+fn tgetimgid4thbyteplus1(g: &Glyph) -> u32 {
+    (g.u as u32 >> 18) & 0x1ff
+}
+
+fn tgetimgdiacriticcount(g: &Glyph) -> u32 {
+    (g.u as u32 >> 27) & 0x3
+}
+
+fn tgetisclassicplaceholder(g: &Glyph) -> bool {
+    let v = ((g.u as usize) >> 29) & 0x1;
+    return v != 0;
+}
+
+fn tsetimgrow(g: &mut Glyph, row: usize) {
+    let u = g.u as u32;
+    let value = (u & !0x1ff) | (row as u32 & 0x1ff);
+
+    g.u = char::from_u32(value).unwrap_or('\0');
+}
+
+fn tsetimgcol(g: &mut Glyph, col: usize) {
+    let u = g.u as u32;
+    let value = (u & !(0x1ff << 9)) | ((col as u32 & 0x1ff) << 9);
+
+    g.u = char::from_u32(value).unwrap_or('\0');
+}
+
+fn tsetimg4thbyteplus1(g: &mut Glyph, byteplus1: u32) {
+    let u = g.u as u32;
+    let value = (u & !(0x1ff << 18)) | ((byteplus1 & 0x1ff) << 18);
+
+    g.u = char::from_u32(value).unwrap_or('\0');
+}
+
+fn tsetimgdiacriticcount(g: &mut Glyph, count: i32) {
+    let u = g.u as u32;
+    let value = (u & !(0x3 << 27)) | (((count as u32) & 0x3) << 27);
+
+    g.u = char::from_u32(value).unwrap_or('\0');
+}
+
+fn tsetisclassicplaceholder(g: &mut Glyph, is_classic: i32) {
+    let u = g.u as u32;
+    let value = (u & !(0x1 << 29)) | (((is_classic as u32) & 0x1) << 29);
+
+    g.u = char::from_u32(value).unwrap_or('\0');
+}
+
+fn tgetimgid(g: &Glyph) -> u32 {
+    let mut msb = tgetimgid4thbyteplus1(g);
+    if msb != 0 {
+        msb -= 1;
+    }
+
+    (msb << 24) | (g.fg & 0xFFFFFF)
+}
+
+fn tsetimgid(g: &mut Glyph, id: u32) {
+    g.fg = (id & 0xFFFFFF) | (1 << 24);
+    tsetimg4thbyteplus1(g, ((id >> 24) & 0xFF) + 1);
+}
+
+fn tgetimgplacementid(g: &Glyph) -> u32 {
+    if tgetdecorcolor(g) == DECOR_DEFAULT_COLOR {
+        return 0;
+    }
+
+    g.decoration as u32 & 0xFFFFFF
+}
+
+fn tgetdecorcolor(g: &Glyph) -> u32 {
+    todo!()
+}
+
+fn tsetimgplacementid(g: &Glyph, placement_id: usize) {
+    todo!()
+}
+
+fn gr_get_glyph_underneath_image(
+    image_id: u32,
+    placement_id: u32,
+    col: u32,
+    row: u32,
+) -> Option<&Glyph> {
+    todo!()
 }
