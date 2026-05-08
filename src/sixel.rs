@@ -6,11 +6,13 @@ static mut IMAGE_ID: AtomicUsize = AtomicUsize::new(0);
 static mut IMAGE_LIST: BTreeMap<usize, ImageList> = BTreeMap::new();
 
 fn get_image_list() -> &'static mut BTreeMap<usize, ImageList> {
-    unsafe { &mut IMAGE_LIST }
+    // unsafe { &mut IMAGE_LIST }
+    todo!();
 }
 
 fn get_next_image_id() -> usize {
-    unsafe { IMAGE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst) }
+    // unsafe { IMAGE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst) }
+    todo!();
 }
 
 fn add_image(image: ImageList) {

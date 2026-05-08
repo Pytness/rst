@@ -112,8 +112,13 @@ fn drawbox(x: usize, y: usize, w: usize, h: usize, fg: XftColor, bg: XftColor, g
     } else if (bd & BBS) != 0 {
         /* Shades - data is 1/2/3 for 25%/50%/75% alpha, respectively */
         let d = bd as u16;
-        let xfc; //:XftColor
-        let mut xrc: RenderColor; // XRenderColor: xrc = {.alpha = 0xffff};
+        // let xfc; //:XftColor
+        let mut xrc: RenderColor = RenderColor {
+            red: 0,
+            green: 0,
+            blue: 0,
+            alpha: 0,
+        }; // XRenderColor: xrc = {.alpha = 0xffff};
 
         xrc.red = mix_shade!(fg.color.red, bg.color.red, d);
         xrc.green = mix_shade!(fg.color.green, bg.color.green, d);

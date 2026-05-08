@@ -1,3 +1,5 @@
+use crate::glyph::Glyph;
+
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 
 fn tgetimgrow(g: &Glyph) -> u32 {
@@ -87,7 +89,7 @@ fn gr_get_glyph_underneath_image(
     placement_id: u32,
     col: u32,
     row: u32,
-) -> Option<&Glyph> {
+) -> Option<&'static Glyph> {
     todo!()
 }
 

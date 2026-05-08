@@ -6,4 +6,7 @@ edition = "2024"
 [dependencies]
 bitflags = "2.11.1"
 libc = "0.2.186"
-x11-dl = "2.21.0"
+winit = { version = "0.30.13", features = ["wayland-dlopen"], default-features = false }
+glutin = { version = "0.32.3", features = ["wayland"], default-features = false }
+glutin-winit = {version = "0.5.0", features = ["wayland", "egl"], default-features = false }
+glow = "0.17.0"

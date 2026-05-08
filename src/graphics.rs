@@ -299,6 +299,6 @@ pub fn foreach_pixmap(placement: &ImagePlacement, pixmapvar: (), mut code: impl 
     todo!()
 }
 
-pub fn gr_find_image(image_id) -> &Image {
-	todo!()
+pub fn gr_find_image(image_id: usize) -> &'static Image {
+    todo!()
 }

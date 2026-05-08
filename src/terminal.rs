@@ -4,8 +4,8 @@ use crate::{BETWEEN, config};
 use bitflags::bitflags;
 
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
-const IMAGE_PLACEHOLDER_CHAR: char = 0x10EEEE as char;
-const IMAGE_PLACEHOLDER_CHAR_OLD: char = 0xEEEE as char;
+const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
+const IMAGE_PLACEHOLDER_CHAR_OLD: char = '\u{EEEE}';
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +113,12 @@ pub struct TCursor {
 pub type Line = Box<[Glyph]>;
 
 #[derive(Debug, Clone, Copy)]
-pub struct Image;
+pub struct Image {
+    x: usize,
+    y: usize,
+    cols: usize,
+    rows: usize,
+}
 
 /* Internal representation of the screen */
 
@@ -421,9 +426,9 @@ impl Term {
         const VT100_0: [char; 62] = [
 	        /* 0x41 - 0x7e */
 	        '↑', '↓', '→', '←', '█', '▚', '☃',      /* A - G */
-	        0,   0,   0,   0,   0,   0,   0,   0,   /* H - O */
-	        0,   0,   0,   0,   0,   0,   0,   0,   /* P - W */
-	        0,   0,   0,   0,   0,   0,   0,   ' ', /* X - _ */
+	        '\0',   '\0',   '\0',   '\0',   '\0',   '\0',   '\0',   '\0',   /* H - O */
+	        '\0',   '\0',   '\0',   '\0',   '\0',   '\0',   '\0',   '\0',   /* P - W */
+	        '\0',   '\0',   '\0',   '\0',   '\0',   '\0',   '\0',   ' ', /* X - _ */
 	        '◆', '▒', '␉', '␌', '␍', '␊', '°', '±', /* ` - g */
 	        '␤', '␋', '┘', '┐', '┌', '└', '┼', '⎺', /* h - o */
 	        '⎻', '─', '⎼', '⎽', '├', '┤', '┴', '┬', /* p - w */
@@ -507,7 +512,7 @@ impl Term {
         cols: usize,
         rows: usize,
         do_not_move_cursor: bool,
-        text_underneath: Option<&[Glyph]>,
+        mut text_underneath: Option<&mut [Glyph]>,
     ) {
         for row in 0..rows {
             let y = self.c.y;
@@ -520,14 +525,14 @@ impl Term {
                     break;
                 }
 
-                let gp = &mut self.line[y][x];
-
                 if self.selected(x, y) {
                     self.selclear();
                 }
 
-                if let Some(text_underneath) = text_underneath {
-                    let mut to_save = gp;
+                let gp = &mut self.line[y][x];
+
+                if let Some(ref mut text_underneath) = text_underneath {
+                    let mut to_save = gp as &Glyph;
 
                     // If there is already a classic placeholder,
                     // use the text underneath it. This will leave
@@ -544,7 +549,7 @@ impl Term {
                         );
 
                         if let Some(under) = under {
-                            // to_save = under;
+                            to_save = under;
                         }
                     }
 
@@ -593,6 +598,7 @@ impl Term {
             return;
         }
 
+        // scroll both screens independently
         if row < self.row {
             self.tcursor(CursorMovement::CURSOR_SAVE);
             self.tsetscroll(0, self.row - 1);
@@ -609,6 +615,77 @@ impl Term {
                 self.tswapscreen();
                 self.tcursor(CursorMovement::CURSOR_LOAD);
             }
+        }
+
+        self.line
+            .resize_with(row, || vec![Glyph::default(); col].into_boxed_slice());
+        self.alt
+            .resize_with(row, || vec![Glyph::default(); col].into_boxed_slice());
+        self.dirty.resize(row, true);
+        self.tabs.resize(col, 0);
+
+        // resize each row to new width, zero-pad if needed
+        // for y in 0..minrow {
+        //     self.line[y].resize(col, Glyph::default());
+        //     self.alt[y].resize(col, Glyph::default());
+        // }
+
+        // allocate any new rows
+        for y in minrow..row {
+            self.line[y] = vec![Glyph::default(); col].into_boxed_slice();
+            self.alt[y] = vec![Glyph::default(); col].into_boxed_slice();
+        }
+
+        if col > self.col {
+            self.tabs[self.col..]
+                .iter_mut()
+                .step_by(config::TABSPACES)
+                .for_each(|t| *t = 0);
+
+            for i in (config::TABSPACES..col).step_by(config::TABSPACES) {
+                self.tabs[i] = 1;
+            }
+        }
+
+        self.col = col;
+        self.row = row;
+
+        // reset scrolling region
+        self.tsetscroll(0, row - 1);
+
+        // clearing both screens (it makes dirty all lines)
+
+        for i in 0..2 {
+            self.tmoveto(self.c.x, self.c.y);
+            self.tcursor(CursorMovement::CURSOR_SAVE);
+
+            if mincol < col && 0 < minrow {
+                self.tclearregion(mincol, 0, col - 1, minrow - 1);
+            }
+
+            if 0 < col && minrow < row {
+                self.tclearregion(0, minrow, col - 1, row - 1);
+            }
+        }
+
+        // expand images into new terxt cells
+
+        for i in 0..2 {
+            for image in &self.images {
+                if image.y < 0 || image.y >= self.row {
+                    // TODO:  delete_image(image);
+                    continue;
+                }
+
+                let line = self.line[image.y].as_mut();
+                let x2 = (image.x + image.cols).min(self.col) - 1;
+
+                if mincol < col && x2 >= mincol && image.x < col {
+                    // TODO: self.tsetsixelattr(line, image.x.max(mincol), x2);
+                }
+            }
+
+            self.tswapscreen();
         }
     }
 
@@ -737,7 +814,7 @@ impl Term {
     }
 
     fn tdeleteimages(&self) {
-        todo!()
+        // TODO: delete all images in the current screen
     }
 }
 
@@ -832,6 +909,6 @@ fn gr_get_glyph_underneath_image(
     placement_id: u32,
     col: u32,
     row: u32,
-) -> Option<&Glyph> {
+) -> Option<&'static Glyph> {
     todo!()
 }
