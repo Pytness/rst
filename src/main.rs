@@ -2,7 +2,7 @@ mod config;
 mod csiesq;
 mod glyph;
 mod graphics;
-mod image;
+mod kitty;
 mod macros;
 mod sixel;
 mod terminal;
