@@ -1,6 +1,7 @@
 use bitflags::bitflags;
 
 bitflags! {
+    #[derive(Default)]
     pub struct WinMode: u32 {
         const MODE_VISIBLE     = 1 << 0;
         const MODE_FOCUSED     = 1 << 1;
@@ -31,8 +32,11 @@ bitflags! {
 }
 
 #[rustfmt::skip]
+#[derive(Default)]
 enum CursorStyle {
+
     BlinkingBlock =        0, // blinking block
+    #[default]
     BlinkingBlockDefault = 1, // blinking block (default)
     SteadyBlock          = 2, // steady block ("█")
     BlinkingUnderline    = 3, // blinking underline
@@ -41,7 +45,8 @@ enum CursorStyle {
     SteadyBar            = 6, // steady bar ("|")
 }
 
-struct TermWindow {
+#[derive(Default)]
+pub struct TermWindow {
     // int tw, th; /* tty width and height */
     // int w, h;   /* window width and height */
     // int hborderpx, vborderpx;
@@ -49,14 +54,14 @@ struct TermWindow {
     // int cw;     /* char width  */
     // int mode;   /* window state/mode flags */
     // int cursor; /* cursor style */
-    tw: i32,
-    th: i32,
-    w: i32,
-    h: i32,
-    hborderpx: i32,
-    vborderpx: i32,
-    ch: i32,
-    cw: i32,
-    mode: WinMode,
-    cursor: CursorStyle,
+    pub tw: i32,
+    pub th: i32,
+    pub w: u32,
+    pub h: u32,
+    pub hborderpx: u32,
+    pub vborderpx: u32,
+    pub ch: u32,
+    pub cw: u32,
+    pub mode: WinMode,
+    pub cursor: CursorStyle,
 }

@@ -1,11 +1,36 @@
+use std::ptr::null_mut;
+
 use crate::boxdraw::boxdraw::isboxdraw;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::{BETWEEN, config};
 use bitflags::bitflags;
+use libc::pselect;
+
+// #define ISCONTROLC0(c) (BETWEEN(c, 0, 0x1f) || (c) == 0x7f)
+// #define ISCONTROLC1(c) (BETWEEN(c, 0x80, 0x9f))
+// #define ISCONTROL(c)   (ISCONTROLC0(c) || ISCONTROLC1(c))
+
+fn ISCONTROLC0(c: char) -> bool {
+    BETWEEN!(c, '\0', '\u{1F}') || c == '\u{7F}'
+}
+
+fn ISCONTROLC1(c: char) -> bool {
+    BETWEEN!(c, '\u{80}', '\u{9F}')
+}
+
+fn ISCONTROL(c: char) -> bool {
+    ISCONTROLC0(c) || ISCONTROLC1(c)
+}
+
+static mut cmdfd: i32 = 0;
 
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
 const IMAGE_PLACEHOLDER_CHAR_OLD: char = '\u{EEEE}';
+
+// TODO: handle globals properly
+static mut su: usize = 0;
+static mut twrite_aborted: bool = false;
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +42,9 @@ bitflags! {
         const MODE_ECHO = 1 << 4;
         const MODE_PRINT = 1 << 5;
         const MODE_UTF8 = 1 << 6;
+        const MODE_SIXEL        = 1 << 7;
+        const MODE_SIXEL_CUR_RT = 1 << 8;
+        const MODE_SIXEL_SDM    = 1 << 9;
     }
 }
 
@@ -157,7 +185,7 @@ pub struct Term {
     ocy: usize,
     top: usize,
     bot: usize,
-    mode: TermMode,
+    pub mode: TermMode,
     esc: u32,
     trantbl: [Charset; 4],
     charset: usize,
@@ -815,6 +843,255 @@ impl Term {
 
     fn tdeleteimages(&self) {
         // TODO: delete all images in the current screen
+    }
+
+    pub fn ttyresize(&mut self, tw: usize, th: usize) {
+        self.pixw = tw;
+        self.pixh = th;
+
+        // TODO:
+        // struct winsize w;
+        // //
+        // w.ws_row    = term.row;
+        // w.ws_col    = term.col;
+        // w.ws_xpixel = tw;
+        // w.ws_ypixel = th;
+        // if (ioctl(cmdfd, TIOCSWINSZ, &w) < 0) {
+        // 	fprintf(stderr, "Couldn't set window size: %s\n", strerror(errno));
+        // }
+    }
+
+    pub fn ttywrite(&self, buffer: &[char], len: usize, may_echo: bool) {
+        if may_echo && self.mode.contains(TermMode::MODE_ECHO) {
+            self.twrite(buffer, len, may_echo);
+        }
+
+        if !self.mode.contains(TermMode::MODE_CRLF) {
+            self.ttywriteraw(buffer, len);
+            return;
+        }
+
+        // This is similar to how the kernel handles ONLCR for ttys
+        let mut i = 0;
+        // TODO: check if this is correct
+        while i < len {
+            let c = buffer[i];
+
+            if c == '\r' {
+                i += 1;
+                // self.ttwriteraw(&"\r\n", 2);
+            } else {
+                let next = buffer[i..]
+                    .iter()
+                    .position(|&x| x == '\r')
+                    .unwrap_or(len - i)
+                    + i;
+
+                self.ttywriteraw(&buffer[i..], next - i);
+            }
+        }
+    }
+
+    fn twrite(&self, buffer: &[char], buflen: usize, show_ctrl: bool) -> usize {
+        let mut charsize = 0;
+        let mut i = 0;
+        let mut u: char = '\0';
+        let su0 = unsafe { su };
+
+        unsafe { twrite_aborted = false };
+
+        while i < buflen {
+            if self.mode.contains(TermMode::MODE_SIXEL)
+            /* TODO: sixel_st.state != PS_ESC */
+            {
+                // charsize = sixel_parser_parse(&sixel_st, (const unsigned char *)buf + n, buflen - n);
+                // continue;
+            } else if self.mode.contains(TermMode::MODE_UTF8) {
+                // FIXME: assumes all chars are properly encoded
+                charsize = 1;
+            } else {
+                u = (buffer[i] as u8 & 0xFF) as char;
+                charsize = 1;
+            }
+
+            if su0 != 0 && unsafe { su == 0 } {
+                unsafe { twrite_aborted = true };
+                break; // ESU - allow rendering before a new BSU
+            }
+
+            if show_ctrl && ISCONTROL(u) {
+                if u as u8 & 0x80 != 0 {
+                    u = (u as u8 & 0x7F) as char;
+                    self.tputc('^');
+                    self.tputc('[');
+                } else if u != '\n' && u != '\r' && u != '\t' {
+                    u = (u as u8 ^ 0x40) as char;
+                    self.tputc('^');
+                }
+            }
+            self.tputc(u);
+
+            i += charsize;
+        }
+
+        return i;
+    }
+
+    fn ttywriteraw(&self, buffer: &[char], len: usize) {
+        let mut wfd: libc::fd_set = unsafe { std::mem::zeroed() };
+        let mut rfd: libc::fd_set = unsafe { std::mem::zeroed() };
+
+        let mut n = len;
+        let mut s: *const libc::c_void = buffer.as_ptr() as *const libc::c_void;
+        let mut lim: usize = 256;
+        let mut retries_left = 100;
+        /*
+         * Remember that we are using a pty, which might be a modem line.
+         * Writing too much will clog the line. That's why we are doing this
+         * dance.
+         * FIXME: Migrate the world to Plan 9.
+         */
+
+        while n > 0 {
+            retries_left -= 1;
+            if retries_left <= 0 {
+                println!("Could not write {} butes to tty", n);
+                break;
+            }
+
+            unsafe {
+                libc::FD_ZERO(&mut wfd);
+                libc::FD_ZERO(&mut rfd);
+                libc::FD_SET(cmdfd, &mut wfd);
+                libc::FD_SET(cmdfd, &mut rfd);
+
+                if pselect(
+                    cmdfd + 1,
+                    &mut rfd,
+                    &mut wfd,
+                    null_mut(),
+                    null_mut(),
+                    null_mut(),
+                ) < 0
+                {
+                    if *libc::__errno_location() == libc::EINTR {
+                        continue;
+                    }
+                    println!("select failed: {}", std::io::Error::last_os_error());
+                    libc::exit(1);
+                }
+
+                if libc::FD_ISSET(cmdfd, &mut rfd) {
+                    /*
+                     * Only write the bytes written by ttywrite() or the
+                     * default of 256. This seems to be a reasonable value
+                     * for a serial line. Bigger values might clog the I/O.
+                     */
+                    let count = if n < lim { n } else { lim };
+                    let r = libc::write(cmdfd, s, count);
+
+                    if r < 0 {
+                        println!("write failed on tty: {}", std::io::Error::last_os_error());
+                        libc::exit(1);
+                    }
+
+                    if r < n as isize {
+                        /*
+                         * We weren't able to write out everything.
+                         * This means the buffer is getting full
+                         * again. Empty it.
+                         */
+                        if n < lim {
+                            lim = self.ttyread();
+                        }
+
+                        n -= r as usize;
+                        s = s.add(r as usize);
+                    } else {
+                        // All bytes have been written
+                        break;
+                    }
+                }
+
+                if libc::FD_ISSET(cmdfd, &mut wfd) {
+                    lim = self.ttyread();
+                }
+            }
+        }
+    }
+
+    fn tputc(&self, arg: char) {
+        todo!()
+    }
+
+    fn ttyread(&self) -> usize {
+        const BUF_SIZE: usize = 256;
+        static mut BUF: [char; 256] = unsafe { std::mem::zeroed() };
+        static mut BUFLEN: usize = 0;
+        static mut ALREADY_PROCESSING: bool = false;
+
+        let mut ret = 0;
+        let mut written = 0;
+
+        if unsafe { BUFLEN > BUF_SIZE } {
+            return 0;
+        }
+
+        unsafe {
+            ret = if twrite_aborted {
+                1
+            } else {
+                let b = &raw mut BUF as *mut libc::c_void;
+                libc::read(cmdfd, b.add(BUFLEN), BUF_SIZE - BUFLEN)
+            };
+
+            match ret {
+                0 => {
+                    libc::exit(0);
+                }
+
+                -1 => {
+                    println!("read failed on tty: {}", std::io::Error::last_os_error());
+                    libc::exit(1);
+                }
+
+                _ => {
+                    BUFLEN += if twrite_aborted { 0 } else { ret as usize };
+
+                    if ALREADY_PROCESSING {
+                        return ret as usize;
+                    }
+
+                    ALREADY_PROCESSING = true;
+
+                    loop {
+                        let buflen_before_processing = BUFLEN;
+                        written += self.twrite(&BUF[written..], BUFLEN - written, false);
+
+                        // If buflen changed during the call to twrite, there is
+                        // new data, and we need to keep processing, otherwise
+                        // we can exit. This will not loop forever because the
+                        // buffer is limited, and we don't clean it in this
+                        // loop, so at some point ttywrite will have to drop
+                        // some data.
+                        if buflen_before_processing == BUFLEN {
+                            break;
+                        }
+                    }
+
+                    ALREADY_PROCESSING = false;
+                    BUFLEN -= written;
+
+                    // keep any incomplete UTF-8 byte sequence for the next call
+                    if BUFLEN > 0 {
+                        let b = &raw mut BUF as *mut libc::c_void;
+                        std::ptr::copy(b.add(written), b, BUFLEN);
+                    }
+
+                    return ret as usize;
+                }
+            }
+        }
     }
 }
 
