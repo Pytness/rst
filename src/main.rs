@@ -24,8 +24,11 @@ fn main() {
     let cols = 80;
     let rows = 24;
 
-    let term = Term::new(cols, rows);
-    let win = TermWindow::default();
+    let mut term = Term::new(cols, rows);
+    let mut win = TermWindow::default();
+
+    let ttyfd = term.ttynew(None, Some("/bin/zsh"), None, None);
+    // xinit
 
     let event_loop = EventLoop::new().unwrap();
 

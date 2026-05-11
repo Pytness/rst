@@ -18,6 +18,7 @@ use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
 use crate::gl_handler::GlHandler;
+use crate::glyph::{Glyph, GlyphAttribute};
 use crate::terminal::{Term, TermMode};
 use crate::win::{TermWindow, WinMode};
 
@@ -57,7 +58,7 @@ impl App {
             return;
         }
 
-        println!("key event: {:?}", event);
+        // println!("key event: {:?}", event);
 
         let PhysicalKey::Code(code) = event.physical_key else {
             return;
@@ -119,7 +120,7 @@ impl App {
         buffer[..len].copy_from_slice(&text.chars().take(64).collect::<Vec<_>>());
 
         if len == 1 {
-            if self.win.mode.contains(WinMode::MODE_8BIT) {
+            if self.win.mode.contains(WinMode::MODE_8BIT) || true {
                 if (buffer[0] as u8) < 0177 {
                     let c = buffer[0] as u8 | 0x80;
                     len = (c as char).len_utf8();
@@ -132,6 +133,7 @@ impl App {
         }
 
         self.term.ttywrite(&buffer, len, true);
+        self.term.ttyread();
     }
     pub fn cmessage(&mut self) {}
 
@@ -199,6 +201,109 @@ impl App {
     pub fn bmotion(&mut self) {}
     pub fn bpress(&mut self) {}
     pub fn brelease(&mut self) {}
+
+    fn draw(&mut self) {
+        let mut cx = self.term.c.x;
+        let mut ocx = self.term.ocx;
+        let mut ocy = self.term.c.y;
+
+        if !self.xstartdraw() {
+            return;
+        }
+
+        ocx = ocx.max(0).min(self.term.col - 1);
+        ocy = ocy.max(0).min(self.term.row - 1);
+
+        if self.term.line[self.term.ocy][self.term.ocx]
+            .mode
+            .contains(GlyphAttribute::ATTR_WDUMMY)
+        {
+            self.term.ocx -= 1;
+        }
+
+        if self.term.line[self.term.c.y][cx]
+            .mode
+            .contains(GlyphAttribute::ATTR_WDUMMY)
+        {
+            cx -= 1;
+        }
+
+        self.drawregion(0, 0, self.term.col, self.term.row);
+
+        let line = self.term.line[self.term.ocy].clone();
+        let g = &self.term.line[self.term.c.y][cx];
+        let og = &raw mut self.term.line[self.term.ocy][self.term.ocx];
+
+        self.xdrawcursor(
+            cx as usize,
+            self.term.c.y as usize,
+            &self.term.line[self.term.c.y][cx],
+            self.term.ocx as usize,
+            self.term.ocy as usize,
+            og,
+            &line,
+            self.term.col as usize,
+        );
+
+        self.term.ocx = cx;
+        self.term.ocy = self.term.c.y;
+
+        self.xfinishdraw();
+
+        if ocx != self.term.ocx || ocy != self.term.ocy {
+            self.xximspot(self.term.ocx as usize, self.term.ocy as usize);
+        }
+    }
+
+    fn xstartdraw(&self) -> bool {
+        return self.win.mode.contains(WinMode::MODE_VISIBLE);
+    }
+
+    fn drawregion(&self, arg_1: i32, arg_2: i32, col: usize, row: usize) {
+        // todo!()
+    }
+
+    fn xdrawcursor(
+        &self,
+        cx: usize,
+        cy: usize,
+        g: &Glyph,
+        ox: usize,
+        oy: usize,
+        og: *mut Glyph,
+        line: &[Glyph],
+        len: usize,
+    ) {
+        // remove the old cursor
+        if self.term.selected(ox, oy) {
+            unsafe { (*og).mode.toggle(GlyphAttribute::ATTR_REVERSE) };
+        }
+
+        // Redraw the line where cursor was previously.
+        // It will restore the ligatures broken by the cursor.
+
+        self.xdrawline(line, 0, oy, len);
+    }
+
+    fn xfinishdraw(&self) {
+        // TODO:
+        println!("Finished drawing");
+    }
+
+    fn xximspot(&self, ocx: usize, ocy: usize) {
+        // TODO:
+        println!("xximspot");
+    }
+
+    fn xdrawline(&self, line: &[Glyph], arg: i32, oy: usize, len: usize) {
+        let i = 0;
+        let x = 0;
+        let ox = 0;
+        let numspecs = 0;
+
+        let base: Glyph = Glyph::default();
+        let new: Glyph = Glyph::default();
+    }
 }
 
 impl ApplicationHandler for App {
@@ -233,6 +338,8 @@ impl ApplicationHandler for App {
         };
 
         self.gl = Some(Rc::new(gl));
+
+        self.win.mode.insert(WinMode::MODE_VISIBLE);
         //
         // self.triangle_renderer.get_or_insert_with(|| unsafe {
         //     renderers::TriangleRenderer::new(self.gl.as_ref().unwrap().clone())
@@ -307,5 +414,7 @@ impl ApplicationHandler for App {
             }
             _ => (),
         }
+
+        self.draw();
     }
 }

@@ -4,7 +4,7 @@ use crate::boxdraw::boxdraw::isboxdraw;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::{BETWEEN, config};
 use bitflags::bitflags;
-use libc::pselect;
+use libc::{getenv, pselect};
 
 // #define ISCONTROLC0(c) (BETWEEN(c, 0, 0x1f) || (c) == 0x7f)
 // #define ISCONTROLC1(c) (BETWEEN(c, 0x80, 0x9f))
@@ -23,6 +23,7 @@ fn ISCONTROL(c: char) -> bool {
 }
 
 static mut cmdfd: i32 = 0;
+static mut pid: i32 = 0;
 
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
@@ -131,10 +132,10 @@ pub struct Selection {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct TCursor {
-    attr: Glyph, // current char attributes
-    x: usize,
-    y: usize,
-    state: CursorState,
+    pub attr: Glyph, // current char attributes
+    pub x: usize,
+    pub y: usize,
+    pub state: CursorState,
 }
 
 // Temp structs
@@ -173,16 +174,16 @@ pub struct Term {
     // ImageList *images;     /* sixel images */
     // ImageList *images_alt; /* sixel images for alternate screen */
     // Rune lastc;            /* last printed char outside of sequence, 0 if control */
-    row: usize,
-    col: usize,
+    pub row: usize,
+    pub col: usize,
     pixw: usize,
     pixh: usize,
-    line: Vec<Line>,
+    pub line: Vec<Line>,
     alt: Vec<Line>,
     dirty: Vec<bool>,
-    c: TCursor,
-    ocx: usize,
-    ocy: usize,
+    pub c: TCursor,
+    pub ocx: usize,
+    pub ocy: usize,
     top: usize,
     bot: usize,
     pub mode: TermMode,
@@ -819,7 +820,7 @@ impl Term {
         return;
     }
 
-    fn selected(&self, x: usize, y: usize) -> bool {
+    pub fn selected(&self, x: usize, y: usize) -> bool {
         let sel = &self.sel;
 
         // sel.ob.x == -1 => SelectionMode::SEL_REMOVED
@@ -845,6 +846,110 @@ impl Term {
         // TODO: delete all images in the current screen
     }
 
+    pub fn ttynew(
+        &mut self,
+        line: Option<&str>,
+        cmd: Option<&str>,
+        out: Option<&str>,
+        args: Option<&[&str]>,
+    ) -> i32 {
+        let mut iofd = 0;
+        let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
+
+        if let Some(out) = out {
+            self.mode.insert(TermMode::MODE_PRINT);
+            iofd = if out == "-" {
+                1
+            } else {
+                unsafe {
+                    libc::open(
+                        out.as_ptr() as *const libc::c_char,
+                        libc::O_WRONLY | libc::O_CREAT,
+                        0o666,
+                    )
+                }
+            };
+
+            if iofd < 0 {
+                println!("Error opening {}:{}", out, std::io::Error::last_os_error());
+                unsafe { libc::exit(1) };
+            }
+        }
+
+        if let Some(line) = line {
+            unsafe {
+                cmdfd = libc::open(line.as_ptr() as *const libc::c_char, libc::O_RDWR);
+
+                if cmdfd < 0 {
+                    println!(
+                        "open line '{}' failed:{}",
+                        line,
+                        std::io::Error::last_os_error()
+                    );
+                    libc::exit(1);
+                }
+
+                libc::dup2(cmdfd, 0);
+                // TODO: stty(args);
+
+                return cmdfd;
+            }
+        }
+
+        let mut m = 0;
+        let mut s = 0;
+
+        unsafe {
+            if libc::openpty(&mut m, &mut s, null_mut(), null_mut(), null_mut()) < 0 {
+                println!("openpty failed: {}", std::io::Error::last_os_error());
+                libc::exit(1);
+            }
+        }
+
+        unsafe {
+            pid = libc::fork();
+
+            match pid {
+                -1 => {
+                    println!("fork failed: {}", std::io::Error::last_os_error());
+                    libc::exit(1);
+                }
+
+                0 => {
+                    libc::close(iofd);
+                    libc::close(m);
+                    libc::setsid();
+                    libc::dup2(s, 0);
+                    libc::dup2(s, 1);
+                    libc::dup2(s, 2);
+
+                    if libc::ioctl(s, libc::TIOCSCTTY, 0) < 0 {
+                        println!(
+                            "ioctl TIOCSCTTY failed: {}",
+                            std::io::Error::last_os_error()
+                        );
+                        libc::exit(1);
+                    }
+
+                    if s > 2 {
+                        libc::close(s);
+                    }
+
+                    execsh(cmd, args);
+                }
+
+                _ => {
+                    libc::close(s);
+                    cmdfd = m;
+                    libc::sigemptyset(&mut sa.sa_mask);
+                    libc::sigaction(libc::SIGCHLD, &sa, null_mut());
+                }
+            }
+        }
+
+        return unsafe { cmdfd };
+    }
+
     pub fn ttyresize(&mut self, tw: usize, th: usize) {
         self.pixw = tw;
         self.pixh = th;
@@ -862,6 +967,8 @@ impl Term {
     }
 
     pub fn ttywrite(&self, buffer: &[char], len: usize, may_echo: bool) {
+        println!("ttywrite: {}", buffer.iter().take(len).collect::<String>());
+
         if may_echo && self.mode.contains(TermMode::MODE_ECHO) {
             self.twrite(buffer, len, may_echo);
         }
@@ -945,6 +1052,11 @@ impl Term {
         let mut s: *const libc::c_void = buffer.as_ptr() as *const libc::c_void;
         let mut lim: usize = 256;
         let mut retries_left = 100;
+
+        println!(
+            "ttywriteraw: {}",
+            buffer.iter().take(len).collect::<String>()
+        );
         /*
          * Remember that we are using a pty, which might be a modem line.
          * Writing too much will clog the line. That's why we are doing this
@@ -990,6 +1102,8 @@ impl Term {
                     let count = if n < lim { n } else { lim };
                     let r = libc::write(cmdfd, s, count);
 
+                    println!("write returned {}, {}", r, n);
+
                     if r < 0 {
                         println!("write failed on tty: {}", std::io::Error::last_os_error());
                         libc::exit(1);
@@ -1011,6 +1125,8 @@ impl Term {
                         // All bytes have been written
                         break;
                     }
+                } else {
+                    println!("select returned but cmdfd is not writable");
                 }
 
                 if libc::FD_ISSET(cmdfd, &mut wfd) {
@@ -1021,10 +1137,11 @@ impl Term {
     }
 
     fn tputc(&self, arg: char) {
-        todo!()
+        println!("tputc called with '{}'", arg);
     }
 
-    fn ttyread(&self) -> usize {
+    pub fn ttyread(&self) -> usize {
+        println!("ttyread called");
         const BUF_SIZE: usize = 256;
         static mut BUF: [char; 256] = unsafe { std::mem::zeroed() };
         static mut BUFLEN: usize = 0;
@@ -1092,6 +1209,60 @@ impl Term {
                 }
             }
         }
+    }
+}
+
+fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
+    unsafe {
+        let pw = libc::getpwuid(libc::getuid());
+
+        if pw.is_null() {
+            println!("getpwuid : {}", std::io::Error::last_os_error());
+            libc::exit(1);
+        }
+
+        let mut sh = libc::getenv("SHELL".as_ptr() as *const libc::c_char);
+
+        if sh.is_null() {
+            sh = if *((*pw).pw_shell) != 0 {
+                (*pw).pw_shell
+            } else {
+                cmd.unwrap_or("/bin/sh").as_ptr() as *mut libc::c_char
+            };
+        }
+
+        if let Some(args) = args {
+            let mut cargs: Vec<*const libc::c_char> = Vec::with_capacity(args.len() + 2);
+            cargs.push(sh);
+            for arg in args {
+                cargs.push(arg.as_ptr() as *const libc::c_char);
+            }
+            cargs.push(std::ptr::null());
+
+            libc::execvp(sh, cargs.as_ptr());
+        } else {
+            libc::execlp(sh, sh, std::ptr::null::<*const libc::c_char>());
+        }
+
+        // TODO: handle envs
+        // unsetenv("COLUMNS");
+        // unsetenv("LINES");
+        // unsetenv("TERMCAP");
+        // setenv("LOGNAME", pw->pw_name, 1);
+        // setenv("USER", pw->pw_name, 1);
+        // setenv("SHELL", sh, 1);
+        // setenv("HOME", pw->pw_dir, 1);
+        // setenv("TERM", termname, 1);
+        // setenv("COLORTERM", "truecolor", 1);
+        // signal(SIGCHLD, SIG_DFL);
+        // signal(SIGHUP, SIG_DFL);
+        // signal(SIGINT, SIG_DFL);
+        // signal(SIGQUIT, SIG_DFL);
+        // signal(SIGTERM, SIG_DFL);
+        // signal(SIGALRM, SIG_DFL);
+
+        libc::execvp(sh, [sh, std::ptr::null()].as_ptr());
+        libc::_exit(1);
     }
 }
 
