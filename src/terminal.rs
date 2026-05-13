@@ -22,6 +22,7 @@ fn ISCONTROL(c: char) -> bool {
     ISCONTROLC0(c) || ISCONTROLC1(c)
 }
 
+static mut iofd: i32 = 0;
 static mut cmdfd: i32 = 0;
 static mut pid: i32 = 0;
 
@@ -853,26 +854,25 @@ impl Term {
         out: Option<&str>,
         args: Option<&[&str]>,
     ) -> i32 {
-        let mut iofd = 0;
         let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
 
         if let Some(out) = out {
             self.mode.insert(TermMode::MODE_PRINT);
-            iofd = if out == "-" {
-                1
-            } else {
-                unsafe {
+            unsafe {
+                iofd = if out == "-" {
+                    1
+                } else {
                     libc::open(
                         out.as_ptr() as *const libc::c_char,
                         libc::O_WRONLY | libc::O_CREAT,
                         0o666,
                     )
-                }
-            };
+                };
 
-            if iofd < 0 {
-                println!("Error opening {}:{}", out, std::io::Error::last_os_error());
-                unsafe { libc::exit(1) };
+                if iofd < 0 {
+                    println!("Error opening {}:{}", out, std::io::Error::last_os_error());
+                    libc::exit(1);
+                }
             }
         }
 
@@ -945,9 +945,9 @@ impl Term {
                     libc::sigaction(libc::SIGCHLD, &sa, null_mut());
                 }
             }
-        }
 
-        return unsafe { cmdfd };
+            return cmdfd;
+        }
     }
 
     pub fn ttyresize(&mut self, tw: usize, th: usize) {
@@ -1144,22 +1144,23 @@ impl Term {
         println!("ttyread called");
         const BUF_SIZE: usize = 256;
         static mut BUF: [char; 256] = unsafe { std::mem::zeroed() };
-        static mut BUFLEN: usize = 0;
+        static mut BUF_WRITTEN: usize = 0;
         static mut ALREADY_PROCESSING: bool = false;
 
         let mut ret = 0;
         let mut written = 0;
 
-        if unsafe { BUFLEN > BUF_SIZE } {
+        if unsafe { BUF_WRITTEN > BUF_SIZE } {
             return 0;
         }
 
         unsafe {
+            // append read bytes to unprocessed bytes
             ret = if twrite_aborted {
                 1
             } else {
                 let b = &raw mut BUF as *mut libc::c_void;
-                libc::read(cmdfd, b.add(BUFLEN), BUF_SIZE - BUFLEN)
+                libc::read(cmdfd, b.add(BUF_WRITTEN), BUF_SIZE - BUF_WRITTEN)
             };
 
             match ret {
@@ -1173,7 +1174,7 @@ impl Term {
                 }
 
                 _ => {
-                    BUFLEN += if twrite_aborted { 0 } else { ret as usize };
+                    BUF_WRITTEN += if twrite_aborted { 0 } else { ret as usize };
 
                     if ALREADY_PROCESSING {
                         return ret as usize;
@@ -1182,8 +1183,8 @@ impl Term {
                     ALREADY_PROCESSING = true;
 
                     loop {
-                        let buflen_before_processing = BUFLEN;
-                        written += self.twrite(&BUF[written..], BUFLEN - written, false);
+                        let buflen_before_processing = BUF_WRITTEN;
+                        written += self.twrite(&BUF[written..], BUF_WRITTEN - written, false);
 
                         // If buflen changed during the call to twrite, there is
                         // new data, and we need to keep processing, otherwise
@@ -1191,18 +1192,18 @@ impl Term {
                         // buffer is limited, and we don't clean it in this
                         // loop, so at some point ttywrite will have to drop
                         // some data.
-                        if buflen_before_processing == BUFLEN {
+                        if buflen_before_processing == BUF_WRITTEN {
                             break;
                         }
                     }
 
                     ALREADY_PROCESSING = false;
-                    BUFLEN -= written;
+                    BUF_WRITTEN -= written;
 
                     // keep any incomplete UTF-8 byte sequence for the next call
-                    if BUFLEN > 0 {
+                    if BUF_WRITTEN > 0 {
                         let b = &raw mut BUF as *mut libc::c_void;
-                        std::ptr::copy(b.add(written), b, BUFLEN);
+                        std::ptr::copy(b.add(written), b, BUF_WRITTEN);
                     }
 
                     return ret as usize;
@@ -1231,18 +1232,17 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
             };
         }
 
-        if let Some(args) = args {
+        let args: Vec<*const libc::c_char> = if let Some(args) = args {
             let mut cargs: Vec<*const libc::c_char> = Vec::with_capacity(args.len() + 2);
             cargs.push(sh);
             for arg in args {
                 cargs.push(arg.as_ptr() as *const libc::c_char);
             }
             cargs.push(std::ptr::null());
-
-            libc::execvp(sh, cargs.as_ptr());
+            cargs
         } else {
-            libc::execlp(sh, sh, std::ptr::null::<*const libc::c_char>());
-        }
+            vec![sh, std::ptr::null(), std::ptr::null()]
+        };
 
         // TODO: handle envs
         // unsetenv("COLUMNS");
@@ -1261,7 +1261,30 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
         // signal(SIGTERM, SIG_DFL);
         // signal(SIGALRM, SIG_DFL);
 
-        libc::execvp(sh, [sh, std::ptr::null()].as_ptr());
+        macro_rules! unsetenv {
+            ($name:expr) => {
+                libc::unsetenv($name.as_ptr() as *const libc::c_char);
+            };
+        }
+
+        macro_rules! setenv {
+            ($name:expr, $value:expr) => {
+                libc::setenv($name.as_ptr() as *const libc::c_char, $value, 1)
+            };
+        }
+
+        unsetenv!("COLUMNS");
+        unsetenv!("LINES");
+        unsetenv!("TERMCAP");
+        setenv!("LOGNAME", (*pw).pw_name);
+        setenv!("USER", (*pw).pw_name);
+        setenv!("SHELL", sh);
+        setenv!("HOME", (*pw).pw_dir);
+        setenv!("TERM", "xterm-256color".as_ptr() as *const libc::c_char);
+
+        println!("Exec: {:?} with args: {:?}", sh, args);
+        let r = libc::execvp(sh, args.as_ptr());
+        println!("execvp failed: {}", std::io::Error::last_os_error());
         libc::_exit(1);
     }
 }
