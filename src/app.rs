@@ -34,6 +34,8 @@ pub struct App {
 
     term: Term,
     win: TermWindow,
+    ttyfd: i32,
+    rfd: libc::fd_set,
 }
 
 impl App {
@@ -43,6 +45,11 @@ impl App {
         template: ConfigTemplateBuilder,
         display_builder: DisplayBuilder,
     ) -> Self {
+        let mut term = term;
+
+        let ttyfd = term.ttynew(None, Some("/bin/zsh"), None, None);
+        println!("ttyfd: {ttyfd}");
+
         Self {
             gl_handler: GlHandler::new(template, display_builder),
             app_state: None,
@@ -50,6 +57,8 @@ impl App {
 
             term,
             win,
+            ttyfd,
+            rfd: unsafe { std::mem::zeroed() },
         }
     }
 
@@ -432,6 +441,31 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             _ => (),
+        }
+
+        unsafe {
+            libc::FD_ZERO(&mut self.rfd);
+            libc::FD_SET(self.ttyfd, &mut self.rfd);
+
+            if libc::pselect(
+                self.ttyfd + 1,
+                &mut self.rfd,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                std::ptr::null(),
+            ) < 0
+            {
+                if *libc::__errno_location() != libc::EINTR {
+                    panic!("pselect failed: {}", std::io::Error::last_os_error());
+                }
+            }
+
+            let ttyin = libc::FD_ISSET(self.ttyfd, &mut self.rfd); // || ttyread_pending();
+
+            if ttyin {
+                self.term.ttyread();
+            }
         }
 
         self.draw();

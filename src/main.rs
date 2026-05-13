@@ -27,7 +27,6 @@ fn main() {
     let mut term = Term::new(cols, rows);
     let mut win = TermWindow::default();
 
-    let ttyfd = term.ttynew(None, Some("/bin/zsh"), None, None);
     // xinit
 
     let event_loop = EventLoop::new().unwrap();
