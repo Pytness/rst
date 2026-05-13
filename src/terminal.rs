@@ -180,7 +180,7 @@ pub struct Term {
     pixh: usize,
     pub line: Vec<Line>,
     alt: Vec<Line>,
-    dirty: Vec<bool>,
+    pub dirty: Vec<bool>,
     pub c: TCursor,
     pub ocx: usize,
     pub ocy: usize,

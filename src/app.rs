@@ -259,8 +259,19 @@ impl App {
         return self.win.mode.contains(WinMode::MODE_VISIBLE);
     }
 
-    fn drawregion(&self, arg_1: i32, arg_2: i32, col: usize, row: usize) {
-        // todo!()
+    fn drawregion(&mut self, x1: i32, y1: i32, x2: usize, y2: usize) {
+        self.xstartimagedraw(&self.term.dirty, self.term.row);
+
+        for y in y1 as usize..y2 {
+            if !self.term.dirty[y] {
+                continue;
+            }
+
+            self.term.dirty[y] = false;
+            self.xdrawline(&self.term.line[y], x1, y, x2);
+        }
+
+        self.xfinishimagedraw();
     }
 
     fn xdrawcursor(
@@ -303,6 +314,14 @@ impl App {
 
         let base: Glyph = Glyph::default();
         let new: Glyph = Glyph::default();
+    }
+
+    fn xstartimagedraw(&self, dirty: &[bool], row: usize) {
+        // todo!()
+    }
+
+    fn xfinishimagedraw(&self) {
+        // todo!()
     }
 }
 
