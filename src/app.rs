@@ -413,6 +413,8 @@ impl ApplicationHandler for App {
         _id: WindowId,
         event: winit::event::WindowEvent,
     ) {
+        let timeout: f64 = 0.0;
+
         match event {
             WindowEvent::KeyboardInput {
                 event,
@@ -444,6 +446,12 @@ impl ApplicationHandler for App {
         }
 
         unsafe {
+            // TODO: implement missing timeout handling
+            let tv: libc::timespec = libc::timespec {
+                tv_sec: timeout as libc::time_t,
+                tv_nsec: ((timeout - timeout.floor()) * 1e9) as libc::c_long,
+            };
+
             libc::FD_ZERO(&mut self.rfd);
             libc::FD_SET(self.ttyfd, &mut self.rfd);
 
@@ -452,7 +460,7 @@ impl ApplicationHandler for App {
                 &mut self.rfd,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                std::ptr::null(),
+                &tv,
                 std::ptr::null(),
             ) < 0
             {
