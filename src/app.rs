@@ -118,31 +118,38 @@ impl App {
         let Some(text) = event.text_with_all_modifiers() else {
             return;
         };
-        let mut len = text.len();
+
+        let bytes = text.as_bytes();
+        let mut len = bytes.len();
 
         if len == 0 {
             return;
         }
-        println!("Composed text: {:?}", text);
+        println!("Composed text ({}): {:?}", len, text);
 
-        let mut buffer = ['\0'; 64];
-        buffer[..len].copy_from_slice(&text.chars().take(64).collect::<Vec<_>>());
+        let mut buffer = [b'\0'; 64];
+        buffer[..len].copy_from_slice(&bytes.iter().take(len).cloned().collect::<Vec<u8>>());
 
-        if len == 1 {
-            if self.win.mode.contains(WinMode::MODE_8BIT) {
-                if (buffer[0] as u8) < 0177 {
-                    let c = buffer[0] as u8 | 0x80;
+        const MOD1: bool = false;
+        // TODO: if (len == 1 && e->state & Mod1Mask)
+        if len == 1 && MOD1 {
+            println!("Single character input: {}", buffer[0] as char);
+            if self.win.mode.contains(WinMode::MODE_8BIT) || true {
+                println!("8-bit mode enabled, treating input as 8-bit character");
+                if buffer[0] < 0177 {
+                    let c = buffer[0] | 0x80;
                     len = (c as char).len_utf8();
                 }
             } else {
-                buffer[1] = '\0';
-                buffer[0] = '\x1b';
+                println!("8-bit mode disabled, treating input as UTF-8 character");
+                buffer[1] = b'\0';
+                buffer[0] = b'\x1b';
                 len = 2;
             }
         }
 
         self.term.ttywrite(&buffer, len, true);
-        self.term.ttyread();
+        // self.term.ttyread();
     }
     pub fn cmessage(&mut self) {}
 

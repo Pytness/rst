@@ -966,11 +966,9 @@ impl Term {
         // }
     }
 
-    pub fn ttywrite(&self, buffer: &[char], len: usize, may_echo: bool) {
-        println!("ttywrite: {}", buffer.iter().take(len).collect::<String>());
-
+    pub fn ttywrite(&self, buffer: &[u8], len: usize, may_echo: bool) {
         if may_echo && self.mode.contains(TermMode::MODE_ECHO) {
-            self.twrite(buffer, len, may_echo);
+            self.twrite(&buffer, len, true);
         }
 
         if !self.mode.contains(TermMode::MODE_CRLF) {
@@ -984,13 +982,13 @@ impl Term {
         while i < len {
             let c = buffer[i];
 
-            if c == '\r' {
+            if c == b'\r' {
                 i += 1;
                 // self.ttwriteraw(&"\r\n", 2);
             } else {
                 let next = buffer[i..]
                     .iter()
-                    .position(|&x| x == '\r')
+                    .position(|&x| x == b'\r')
                     .unwrap_or(len - i)
                     + i;
 
@@ -999,7 +997,7 @@ impl Term {
         }
     }
 
-    fn twrite(&self, buffer: &[char], buflen: usize, show_ctrl: bool) -> usize {
+    fn twrite(&self, buffer: &[u8], buflen: usize, show_ctrl: bool) -> usize {
         let mut charsize = 0;
         let mut i = 0;
         let mut u: char = '\0';
@@ -1015,9 +1013,20 @@ impl Term {
                 // continue;
             } else if self.mode.contains(TermMode::MODE_UTF8) {
                 // FIXME: assumes all chars are properly encoded
-                charsize = 1;
+                for utf_len in 0..4 {
+                    let end = (i + utf_len + 1).min(buflen);
+                    match str::from_utf8(&buffer[i..end]) {
+                        Ok(s) => {
+                            u = s.chars().next().unwrap_or('\0');
+                            charsize = utf_len + 1;
+                            break;
+                        }
+                        _ => continue,
+                    }
+                }
             } else {
-                u = (buffer[i] as u8 & 0xFF) as char;
+                println!("Non-UTF8 mode is not supported in this implementation");
+                u = (buffer[i] & 0xFF) as char;
                 charsize = 1;
             }
 
@@ -1026,7 +1035,7 @@ impl Term {
                 break; // ESU - allow rendering before a new BSU
             }
 
-            if show_ctrl && ISCONTROL(u) {
+            if show_ctrl && ISCONTROL(u as char) {
                 if u as u8 & 0x80 != 0 {
                     u = (u as u8 & 0x7F) as char;
                     self.tputc('^');
@@ -1036,6 +1045,7 @@ impl Term {
                     self.tputc('^');
                 }
             }
+
             self.tputc(u);
 
             i += charsize;
@@ -1044,7 +1054,7 @@ impl Term {
         return i;
     }
 
-    fn ttywriteraw(&self, buffer: &[char], len: usize) {
+    fn ttywriteraw(&self, buffer: &[u8], len: usize) {
         let mut wfd: libc::fd_set = unsafe { std::mem::zeroed() };
         let mut rfd: libc::fd_set = unsafe { std::mem::zeroed() };
 
@@ -1053,10 +1063,6 @@ impl Term {
         let mut lim: usize = 256;
         let mut retries_left = 100;
 
-        println!(
-            "ttywriteraw: {}",
-            buffer.iter().take(len).collect::<String>()
-        );
         /*
          * Remember that we are using a pty, which might be a modem line.
          * Writing too much will clog the line. That's why we are doing this
@@ -1067,7 +1073,7 @@ impl Term {
         while n > 0 {
             retries_left -= 1;
             if retries_left <= 0 {
-                println!("Could not write {} butes to tty", n);
+                println!("Could not write {} bytes to tty", n);
                 break;
             }
 
@@ -1137,13 +1143,13 @@ impl Term {
     }
 
     fn tputc(&self, arg: char) {
-        println!("tputc called with '{}'", arg);
+        // println!("tputc called with '{}'", arg);
     }
 
     pub fn ttyread(&self) -> usize {
         println!("ttyread called");
         const BUF_SIZE: usize = 256;
-        static mut BUF: [char; 256] = unsafe { std::mem::zeroed() };
+        static mut BUF: [u8; 256] = unsafe { std::mem::zeroed() };
         static mut BUF_WRITTEN: usize = 0;
         static mut ALREADY_PROCESSING: bool = false;
 
@@ -1156,12 +1162,19 @@ impl Term {
 
         unsafe {
             // append read bytes to unprocessed bytes
+            println!("ttyread about to read");
             ret = if twrite_aborted {
                 1
             } else {
                 let b = &raw mut BUF as *mut libc::c_void;
                 libc::read(cmdfd, b.add(BUF_WRITTEN), BUF_SIZE - BUF_WRITTEN)
             };
+            println!("ttyread after read");
+
+            println!(
+                "read: {:?}",
+                &BUF[BUF_WRITTEN..(BUF_WRITTEN + ret as usize)]
+            );
 
             match ret {
                 0 => {
@@ -1200,10 +1213,14 @@ impl Term {
                     ALREADY_PROCESSING = false;
                     BUF_WRITTEN -= written;
 
+                    let left = BUF_WRITTEN;
+                    println!("Finished processing, {} bytes left in buffer", left);
+
                     // keep any incomplete UTF-8 byte sequence for the next call
                     if BUF_WRITTEN > 0 {
                         let b = &raw mut BUF as *mut libc::c_void;
                         std::ptr::copy(b.add(written), b, BUF_WRITTEN);
+                        std::ptr::write_bytes(b.add(BUF_WRITTEN), 0, BUF_SIZE - BUF_WRITTEN);
                     }
 
                     return ret as usize;
