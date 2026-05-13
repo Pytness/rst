@@ -870,8 +870,7 @@ impl Term {
                 };
 
                 if iofd < 0 {
-                    println!("Error opening {}:{}", out, std::io::Error::last_os_error());
-                    libc::exit(1);
+                    panic!("Error opening {}:{}", out, std::io::Error::last_os_error());
                 }
             }
         }
@@ -881,12 +880,11 @@ impl Term {
                 cmdfd = libc::open(line.as_ptr() as *const libc::c_char, libc::O_RDWR);
 
                 if cmdfd < 0 {
-                    println!(
-                        "open line '{}' failed:{}",
+                    panic!(
+                        "open line '{}' failed: {}",
                         line,
                         std::io::Error::last_os_error()
                     );
-                    libc::exit(1);
                 }
 
                 libc::dup2(cmdfd, 0);
@@ -901,8 +899,7 @@ impl Term {
 
         unsafe {
             if libc::openpty(&mut m, &mut s, null_mut(), null_mut(), null_mut()) < 0 {
-                println!("openpty failed: {}", std::io::Error::last_os_error());
-                libc::exit(1);
+                panic!("openpty failed: {}", std::io::Error::last_os_error());
             }
         }
 
@@ -911,8 +908,7 @@ impl Term {
 
             match pid {
                 -1 => {
-                    println!("fork failed: {}", std::io::Error::last_os_error());
-                    libc::exit(1);
+                    panic!("fork failed: {}", std::io::Error::last_os_error());
                 }
 
                 0 => {
@@ -924,11 +920,10 @@ impl Term {
                     libc::dup2(s, 2);
 
                     if libc::ioctl(s, libc::TIOCSCTTY, 0) < 0 {
-                        println!(
+                        panic!(
                             "ioctl TIOCSCTTY failed: {}",
                             std::io::Error::last_os_error()
                         );
-                        libc::exit(1);
                     }
 
                     if s > 2 {
@@ -1095,8 +1090,7 @@ impl Term {
                     if *libc::__errno_location() == libc::EINTR {
                         continue;
                     }
-                    println!("select failed: {}", std::io::Error::last_os_error());
-                    libc::exit(1);
+                    panic!("select failed: {}", std::io::Error::last_os_error());
                 }
 
                 if libc::FD_ISSET(cmdfd, &mut rfd) {
@@ -1111,8 +1105,7 @@ impl Term {
                     println!("write returned {}, {}", r, n);
 
                     if r < 0 {
-                        println!("write failed on tty: {}", std::io::Error::last_os_error());
-                        libc::exit(1);
+                        panic!("write failed on tty: {}", std::io::Error::last_os_error());
                     }
 
                     if r < n as isize {
@@ -1182,8 +1175,7 @@ impl Term {
                 }
 
                 -1 => {
-                    println!("read failed on tty: {}", std::io::Error::last_os_error());
-                    libc::exit(1);
+                    panic!("read failed on tty: {}", std::io::Error::last_os_error());
                 }
 
                 _ => {
@@ -1235,8 +1227,7 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
         let pw = libc::getpwuid(libc::getuid());
 
         if pw.is_null() {
-            println!("getpwuid : {}", std::io::Error::last_os_error());
-            libc::exit(1);
+            panic!("getpwuid: {}", std::io::Error::last_os_error());
         }
 
         let mut sh = libc::getenv("SHELL".as_ptr() as *const libc::c_char);
