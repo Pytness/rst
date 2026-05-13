@@ -120,7 +120,7 @@ impl App {
         buffer[..len].copy_from_slice(&text.chars().take(64).collect::<Vec<_>>());
 
         if len == 1 {
-            if self.win.mode.contains(WinMode::MODE_8BIT) || true {
+            if self.win.mode.contains(WinMode::MODE_8BIT) {
                 if (buffer[0] as u8) < 0177 {
                     let c = buffer[0] as u8 | 0x80;
                     len = (c as char).len_utf8();
