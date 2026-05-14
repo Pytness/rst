@@ -1,7 +1,7 @@
-use std::ptr::null_mut;
+use std::ptr::{null, null_mut};
 
 use crate::boxdraw::boxdraw::isboxdraw;
-use crate::csiesq::CSIEscape;
+use crate::csiesq::{CSIEscape, STR_TERM_ST};
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::win::WinMode;
 use crate::{BETWEEN, config};
@@ -21,7 +21,7 @@ pub struct StrEscape {
     pub buf: Vec<u8>,
     pub len: usize,
     pub size: usize,
-    pub term: char,
+    pub term: *const u8,
 }
 
 impl Default for StrEscape {
@@ -31,7 +31,7 @@ impl Default for StrEscape {
             buf: Vec::with_capacity(STR_BUF_SIZ),
             len: 0,
             size: 0,
-            term: '\0',
+            term: null(),
         }
     }
 }
@@ -1267,7 +1267,7 @@ impl Term {
         if self.esc.contains(EscapeState::ESC_START) {
             if self.esc.contains(EscapeState::ESC_CSI) {
                 let index = self.csiescseq.len;
-                self.csiescseq.buf[index] = u;
+                self.csiescseq.buf[index] = u as u8;
                 self.csiescseq.len += 1;
 
                 let len = self.csiescseq.len;
@@ -1281,7 +1281,7 @@ impl Term {
                 return;
             } else if self.esc.contains(EscapeState::ESC_DCS) {
                 let idx = self.csiescseq.len;
-                self.csiescseq.buf[idx] = u;
+                self.csiescseq.buf[idx] = u as u8;
                 self.csiescseq.len += 1;
                 let len = self.csiescseq.len;
                 if (u >= '\u{0040}' && u <= '\u{007E}') || len >= self.csiescseq.buf.len() - 1 {
@@ -1612,7 +1612,7 @@ impl Term {
             '\\' => {
                 if self.esc.contains(EscapeState::ESC_STR_END) {
                     // TODO: STR_TERM_ST = 0o33
-                    self.strescseq.term = 0o33 as char;
+                    self.strescseq.term = STR_TERM_ST.as_ptr();
                     self.strhandle();
                 }
             }
@@ -1625,11 +1625,11 @@ impl Term {
     }
 
     fn csiparse(&mut self) {
-        csiparse();
+        self.csiescseq.parse();
     }
 
     fn csihandle(&mut self) {
-        csihandle();
+        self.csiescseq.handle();
     }
 
     fn dcshandle(&mut self) {
