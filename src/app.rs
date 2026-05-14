@@ -164,7 +164,7 @@ impl<'a> App<'a> {
             println!("Single character input: {}", buffer[0] as char);
             if self.win.mode.contains(WinMode::MODE_8BIT) || true {
                 println!("8-bit mode enabled, treating input as 8-bit character");
-                if buffer[0] < 0177 {
+                if buffer[0] < 0o177 {
                     let c = buffer[0] | 0x80;
                     len = (c as char).len_utf8();
                 }
