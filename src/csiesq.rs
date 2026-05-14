@@ -97,4 +97,30 @@ impl CSIEscape {
     pub fn handle(&self) {
         // TODO:
     }
+
+    pub fn dump(&self) {
+        eprintln!("ESC[");
+
+        for i in 0..self.len {
+            let c = self.buf[i] & 0xFF;
+
+            let is_printable = c.is_ascii_alphabetic()
+                || c.is_ascii_digit()
+                || c.is_ascii_punctuation()
+                || c == b' ';
+            if is_printable {
+                eprint!("{}", c as char);
+            } else if c == b'\n' {
+                eprint!("(\\n)");
+            } else if c == b'\r' {
+                eprint!("(\\r)");
+            } else if c == 0x1b {
+                eprint!("(\\e)");
+            } else {
+                eprint!("({:02X})", c);
+            }
+        }
+
+        eprint!("\n");
+    }
 }
