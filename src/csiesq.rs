@@ -20,13 +20,13 @@ const STR_ARG_SIZ: usize = ESC_ARG_SIZ;
 
 #[derive(Debug)]
 pub struct CSIEscape {
-    buf: [char; ESC_BUF_SIZ], // raw string
-    len: usize,               // raw string length
+    pub buf: [char; ESC_BUF_SIZ], // raw string
+    pub len: usize,               // raw string length
     private: char,
 
-    arg: [i32; ESC_ARG_SIZ],
-    narg: usize, // nb of args
-    mode: [char; 2],
+    pub arg: [i32; ESC_ARG_SIZ],
+    pub narg: usize, // nb of args
+    pub mode: [char; 2],
 }
 
 impl Default for CSIEscape {
@@ -43,7 +43,7 @@ impl Default for CSIEscape {
 }
 
 impl CSIEscape {
-    fn parse(&mut self) {
+    pub fn parse(&mut self) {
         unsafe {
             let mut p = self.buf.as_ptr();
             let mut sep = ';';

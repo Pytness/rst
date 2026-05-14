@@ -3,12 +3,14 @@ use std::ptr::null_mut;
 use crate::boxdraw::boxdraw::isboxdraw;
 use crate::csiesq::CSIEscape;
 use crate::glyph::{Glyph, GlyphAttribute};
+use crate::win::WinMode;
 use crate::{BETWEEN, config};
 use bitflags::bitflags;
 use libc::pselect;
 use unicode_width::UnicodeWidthChar;
 
 const STR_BUF_SIZ: usize = 128 * 4; // ESC_BUF_SIZ
+const UTF_SIZ: usize = 4;
 
 /// Holds the current STR/DCS/OSC/APC/PM escape sequence being accumulated.
 #[derive(Debug)]
@@ -17,6 +19,9 @@ pub struct StrEscape {
     pub type_: u8,
     /// Raw accumulated bytes of the sequence
     pub buf: Vec<u8>,
+    pub len: usize,
+    pub size: usize,
+    pub term: char,
 }
 
 impl Default for StrEscape {
@@ -24,6 +29,9 @@ impl Default for StrEscape {
         Self {
             type_: 0,
             buf: Vec::with_capacity(STR_BUF_SIZ),
+            len: 0,
+            size: 0,
+            term: '\0',
         }
     }
 }
@@ -47,6 +55,8 @@ fn ISCONTROL(c: char) -> bool {
 static mut iofd: i32 = 0;
 static mut cmdfd: i32 = 0;
 static mut pid: i32 = 0;
+// TODO: move this to config
+static vtiden: &[u8] = b"";
 
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
@@ -443,7 +453,7 @@ impl Term {
         }
     }
 
-    pub fn tnewline(&mut self, first_col: usize) {
+    pub fn tnewline(&mut self, first_col: bool) {
         let mut y = self.c.y;
 
         if y == self.bot {
@@ -452,7 +462,7 @@ impl Term {
             y += 1;
         }
 
-        let col = if first_col <= 0 { 0 } else { self.c.x };
+        let col = if first_col { 0 } else { self.c.x };
 
         self.tmoveto(col, y);
     }
@@ -629,7 +639,7 @@ impl Term {
             }
 
             if row != rows - 1 {
-                self.tnewline(0);
+                self.tnewline(false);
             }
         }
 
@@ -640,7 +650,7 @@ impl Term {
             // protocol. If the cursor goes beyond the screen edge, insert a
             // newline to match the behavior of kitty.
             if self.c.x + cols >= self.col {
-                self.tnewline(1);
+                self.tnewline(true);
             } else {
                 self.tmoveto(self.c.x + cols, self.c.y);
             }
@@ -1163,16 +1173,28 @@ impl Term {
         }
     }
 
+    // TODO: refactor this
     fn tputc(&mut self, u: char) {
         let control = ISCONTROL(u);
-        let width = if !control {
-            u.width().unwrap_or(1) as i32
+        let mut width = 0;
+        let mut len = 0;
+
+        if (u as u32) < 127 && !self.mode.contains(TermMode::MODE_UTF8) {
+            width = 1;
+            len = 1;
         } else {
-            0
-        };
+            len = u.len_utf8();
+
+            if !control && u.width().unwrap_or(0) == 0 {
+                width = 1;
+            }
+        }
 
         if self.mode.contains(TermMode::MODE_PRINT) {
-            self.tprinter(u);
+            let mut buf = [0u8; 4];
+            u.encode_utf8(&mut buf);
+
+            self.tprinter(&buf, len);
         }
 
         /*
@@ -1181,25 +1203,49 @@ impl Term {
          * receives a ESC, a SUB, a ST or any other C1 control
          * character.
          */
+        let mut check_control_code = false;
+
         if self.esc.contains(EscapeState::ESC_STR) {
-            if u == '\x07'
-                || u == '\u{0018}'
-                || u == '\u{001A}'
-                || u == '\u{001B}'
-                || ISCONTROLC1(u)
-            {
+            let is_control = match u as u8 {
+                0o7 | 0o30 | 0o32 | 0o33 => true,
+                _ => ISCONTROLC1(u),
+            };
+
+            if is_control {
                 self.esc &= !(EscapeState::ESC_START | EscapeState::ESC_STR | EscapeState::ESC_DCS);
                 self.esc |= EscapeState::ESC_STR_END;
-                // fall through to check_control_code
-            } else {
-                if !self.esc.contains(EscapeState::ESC_DCS) {
-                    // Encode the character into UTF-8 and append to strescseq.buf
-                    let mut buf = [0u8; 4];
-                    let s = u.encode_utf8(&mut buf);
-                    self.strescseq.buf.extend_from_slice(s.as_bytes());
+            } else if !self.esc.contains(EscapeState::ESC_DCS)
+                && self.strescseq.len + len > self.strescseq.size
+            {
+                /*
+                 * Here is a bug in terminals. If the user never sends
+                 * some code to stop the str or esc command, then st
+                 * will stop responding. But this is better than
+                 * silently failing with unknown characters. At least
+                 * then users will report back.
+                 *
+                 * In the case users ever get fixed, here is the code:
+                 */
+                /*
+                 * term.esc = 0;
+                 * strhandle();
+                 */
+                if self.strescseq.size > (usize::MAX - UTF_SIZ) / 2 {
+                    return;
                 }
-                return;
+
+                self.strescseq.size *= 2;
+                self.strescseq.buf.resize(self.strescseq.size, 0);
             }
+
+            // memmove(&strescseq.buf[strescseq.len], c, len);
+            // strescseq.len += len;
+            // return;
+            self.strescseq.buf[self.strescseq.len..self.strescseq.len + len]
+                .copy_from_slice(&u.to_string().as_bytes()[..len]);
+
+            self.strescseq.len += len;
+            return;
         }
 
         // check_control_code:
@@ -1208,35 +1254,37 @@ impl Term {
             if self.mode.contains(TermMode::MODE_UTF8) && ISCONTROLC1(u) {
                 return;
             }
+
             self.tcontrolcode(u);
-            if !self.esc.is_empty() {
-                // noop – sequence still ongoing
-            } else {
+
+            if self.esc.is_empty() {
                 self.lastc = '\0';
             }
+
             return;
-        } else if self.esc.contains(EscapeState::ESC_START) {
+        }
+
+        if self.esc.contains(EscapeState::ESC_START) {
             if self.esc.contains(EscapeState::ESC_CSI) {
-                let idx = self.csiescseq.len;
-                self.csiescseq.buf[idx] = u;
+                let index = self.csiescseq.len;
+                self.csiescseq.buf[index] = u;
                 self.csiescseq.len += 1;
+
                 let len = self.csiescseq.len;
-                if (u >= '\u{0040}' && u <= '\u{007E}')
-                    || len >= self.csiescseq.buf.len() - 1
-                {
+
+                if BETWEEN!(u as u8, 0x40, 0x7E) || len >= self.csiescseq.buf.len() - 1 {
                     self.esc = EscapeState::empty();
                     self.csiparse();
                     self.csihandle();
                 }
+
                 return;
             } else if self.esc.contains(EscapeState::ESC_DCS) {
                 let idx = self.csiescseq.len;
                 self.csiescseq.buf[idx] = u;
                 self.csiescseq.len += 1;
                 let len = self.csiescseq.len;
-                if (u >= '\u{0040}' && u <= '\u{007E}')
-                    || len >= self.csiescseq.buf.len() - 1
-                {
+                if (u >= '\u{0040}' && u <= '\u{007E}') || len >= self.csiescseq.buf.len() - 1 {
                     self.csiparse();
                     self.dcshandle();
                 }
@@ -1304,12 +1352,10 @@ impl Term {
         {
             let (cx, cy) = (self.c.x, self.c.y);
             self.line[cy][cx].mode |= GlyphAttribute::ATTR_WRAP;
-            self.tnewline(1);
+            self.tnewline(true);
         }
 
-        if self.mode.contains(TermMode::MODE_INSERT)
-            && (self.c.x + width as usize) < self.col
-        {
+        if self.mode.contains(TermMode::MODE_INSERT) && (self.c.x + width as usize) < self.col {
             let cx = self.c.x;
             let cy = self.c.y;
             let move_count = self.col - cx - width as usize;
@@ -1319,7 +1365,7 @@ impl Term {
 
         if self.c.x + width as usize > self.col {
             if self.mode.contains(TermMode::MODE_WRAP) {
-                self.tnewline(1);
+                self.tnewline(true);
             } else {
                 let w = width as usize;
                 let col = self.col;
@@ -1352,8 +1398,14 @@ impl Term {
         }
     }
 
-    fn tprinter(&self, _u: char) {
-        // TODO: print character to printer output
+    fn tprinter(&self, s: &[u8], len: usize) {
+        unsafe {
+            if iofd >= 0 && xwrite(iofd, s, len) < 0 {
+                eprintln!("Error writing to output file");
+                libc::close(iofd);
+                iofd = -1;
+            }
+        }
     }
 
     fn tcontrolcode(&mut self, u: char) {
@@ -1371,7 +1423,7 @@ impl Term {
             }
             '\x0C' | '\x0B' | '\n' => {
                 // FF, VT, LF
-                self.tnewline(self.mode.contains(TermMode::MODE_CRLF) as usize);
+                self.tnewline(self.mode.contains(TermMode::MODE_CRLF));
             }
             '\x0F' => {
                 // SI – switch to charset 0
@@ -1388,9 +1440,8 @@ impl Term {
             '\x1B' => {
                 // ESC
                 self.csiescseq = CSIEscape::default();
-                self.esc &= !(EscapeState::ESC_CSI
-                    | EscapeState::ESC_ALTCHARSET
-                    | EscapeState::ESC_TEST);
+                self.esc &=
+                    !(EscapeState::ESC_CSI | EscapeState::ESC_ALTCHARSET | EscapeState::ESC_TEST);
                 self.esc |= EscapeState::ESC_START;
             }
             '\u{0018}' | '\u{001A}' => {
@@ -1434,13 +1485,17 @@ impl Term {
     }
 
     fn tdeftran(&mut self, u: char) {
-        const CS: &[char] = &['B', '0', 'U', 'K'];
-        const VCSMAP: &[Charset] = &[
-            Charset::CS_USA,
-            Charset::CS_GRAPHIC0,
-            Charset::CS_GRAPHIC1,
-            Charset::CS_UK,
-        ];
+        // TODO: check this:
+        // const CS: &[char] = &['0', 'B', 'U', 'K'];
+        // const VCSMAP: &[Charset] = &[
+        //     Charset::CS_USA,
+        //     Charset::CS_GRAPHIC0,
+        //     Charset::CS_GRAPHIC1,
+        //     Charset::CS_UK,
+        // ];
+
+        const CS: &[char] = &['0', 'B'];
+        const VCSMAP: &[Charset] = &[Charset::CS_GRAPHIC0, Charset::CS_USA];
 
         if let Some(idx) = CS.iter().position(|&c| c == u) {
             self.trantbl[self.icharset as usize] = VCSMAP[idx];
@@ -1449,9 +1504,9 @@ impl Term {
         }
     }
 
-    fn tdectest(&mut self, u: char) {
-        if u == '8' {
-            // DEC screen alignment test: fill screen with 'E'
+    fn tdectest(&mut self, c: char) {
+        // DEC screen alignment test
+        if c == '8' {
             for y in 0..self.row {
                 for x in 0..self.col {
                     self.tsetchar('E', &self.c.attr.clone(), x, y);
@@ -1460,6 +1515,8 @@ impl Term {
         }
     }
 
+    /// Returns true w hen the sequence is finished and it hasn't to read
+    /// more characters for this sequence, otherwise false
     fn eschandle(&mut self, u: char) -> bool {
         match u {
             '[' => {
@@ -1474,87 +1531,88 @@ impl Term {
                 self.esc |= EscapeState::ESC_UTF8;
                 return false;
             }
-            'P' | '_' | '^' | ']' | 'k' => {
-                self.strescseq = StrEscape::default();
-                self.strescseq.type_ = u as u8;
-                self.esc |= EscapeState::ESC_STR;
+            'P' | // DCS -- Device Control String
+            '_' | // APC -- Application Program Command
+            '^' | // PM -- Privacy Message
+            ']' | // OSC -- Operating System Command
+            'k'   // TODO: check if we can remove this: old title set compatibility
+            => {
                 if u == 'P' {
-                    self.esc |= EscapeState::ESC_DCS;
+                    self.esc.insert(EscapeState::ESC_DCS);
                 }
+
+                self.tstrsequence(u);
                 return false;
             }
-            'n' => {
-                self.charset = 2;
+            'n' | // LS2 -- Locking shift 2
+            'o'   // LS3 -- Locking shift 3
+            => {
+                self.charset = 2 + (u as u8 - b'n') as usize;
             }
-            'o' => {
-                self.charset = 3;
+            '('| // GZD4 -- set primary charset G0
+            ')'| // G1D4 -- set secondary charset G1
+            '*'| // G2D4 -- set tertiary charset G2
+            '+'  // G3D4 -- set quaternary charset G3
+            => {
+                self.icharset = (u as u8 - b'(') as u32;
+                self.esc.insert(EscapeState::ESC_ALTCHARSET);
             }
-            '(' => {
-                self.icharset = 0;
-                self.esc |= EscapeState::ESC_ALTCHARSET;
-                return false;
-            }
-            ')' => {
-                self.icharset = 1;
-                self.esc |= EscapeState::ESC_ALTCHARSET;
-                return false;
-            }
-            '*' => {
-                self.icharset = 2;
-                self.esc |= EscapeState::ESC_ALTCHARSET;
-                return false;
-            }
-            '+' => {
-                self.icharset = 3;
-                self.esc |= EscapeState::ESC_ALTCHARSET;
-                return false;
-            }
+            // IND -- Linefeed
             'D' => {
-                self.tnewline(0);
+                if self.c.y == self.bot {
+                    self.tscrollup(self.top, 1);
+                } else {
+                    self.tmoveto(self.c.x, self.c.y + 1);
+                }
             }
+            // NEL -- Next line
             'E' => {
-                let y = self.c.y;
-                self.tmoveto(0, y);
-                self.tnewline(0);
+                self.tnewline(true); // always go to first col
             }
+            // HTS -- Horizontal tab stop
             'H' => {
-                // Horizontal tab stop
-                let x = self.c.x;
-                self.tabs[x] = 1;
+                self.tabs[self.c.x] = 1;
             }
+            // RI -- Reverse index
             'M' => {
-                // Reverse index
                 if self.c.y == self.top {
                     self.tscrolldown(self.top, 1);
                 } else {
-                    let x = self.c.x;
-                    let y = self.c.y - 1;
-                    self.tmoveto(x, y);
+                    self.tmoveto(self.c.x, self.c.y - 1);
                 }
             }
+            // DECID -- Identify Terminal
             'Z' => {
-                // TODO: send terminal ID (DA)
+                self.ttywrite(vtiden, vtiden.len(), false);
             }
+            // RIS -- Reset to initial state
             'c' => {
                 self.treset();
+                self.resettitle();
+                self.xloadcols();
+                self.xsetmode(0, WinMode::MODE_HIDE);
             }
+            // DECKPAM – application keypad
             '=' => {
-                // DECKPAM – application keypad
-                // TODO: win.mode |= MODE_APPKEYPAD
+                self.xsetmode(1, WinMode::MODE_APPKEYPAD);
             }
+            // DECPNM -- Normal keypad
             '>' => {
-                // DECKPNM – numeric keypad
-                // TODO: win.mode &= ~MODE_APPKEYPAD
+                self.xsetmode(0, WinMode::MODE_APPKEYPAD);
             }
+            // DECSC -- Save Cursor
             '7' => {
                 self.tcursor(CursorMovement::CURSOR_SAVE);
             }
+            // DESRC -- Restore Cursor
             '8' => {
                 self.tcursor(CursorMovement::CURSOR_LOAD);
             }
+            // ST -- String terminator
             '\\' => {
-                // ST (String Terminator) – handled by strhandle
                 if self.esc.contains(EscapeState::ESC_STR_END) {
+                    // TODO: STR_TERM_ST = 0o33
+                    self.strescseq.term = 0o33 as char;
                     self.strhandle();
                 }
             }
@@ -1663,6 +1721,45 @@ impl Term {
             }
         }
     }
+
+    fn tstrsequence(&mut self, c: char) {
+        let mut c = c;
+        self.strreset();
+
+        match c as u8 {
+            0x90 => {
+                c = 'P';
+                self.esc.insert(EscapeState::ESC_DCS);
+            }
+            0x9f => {
+                c = '_';
+            }
+            0x9e => {
+                c = '^';
+            }
+            0x9d => {
+                c = ']';
+            }
+            _ => {}
+        }
+
+        self.strescseq.type_ = c as u8;
+        self.esc.insert(EscapeState::ESC_STR);
+    }
+
+    fn strreset(&mut self) {
+        self.strescseq = Default::default();
+    }
+
+    fn resettitle(&self) {
+        // TODO: xsettitle(NULL);
+    }
+
+    // TODO:
+    fn xsetmode(&self, set: i32, mode: WinMode) {}
+
+    // TODO:
+    fn xloadcols(&self) {}
 }
 
 fn csiparse() {}
@@ -1936,4 +2033,25 @@ fn gr_get_glyph_underneath_image(
     row: u32,
 ) -> Option<&'static Glyph> {
     todo!()
+}
+
+fn xwrite(fd: i32, buffer: &[u8], len: usize) -> isize {
+    let total_len: usize = len;
+    let mut len = len;
+    let mut r = 0;
+
+    while len > 0 {
+        let s = buffer[total_len - len..].as_ptr() as *const libc::c_void;
+        unsafe {
+            r = libc::write(fd, s, len);
+        }
+
+        if r < 0 {
+            return r;
+        }
+
+        len -= r as usize;
+    }
+
+    return total_len as isize;
 }
