@@ -1,12 +1,3 @@
-// typedef struct {
-// 	char buf[ESC_BUF_SIZ]; /* raw string */
-// 	size_t len;            /* raw string length */
-// 	char priv;
-// 	int arg[ESC_ARG_SIZ];
-// 	int narg; /* nb of args */
-// 	char mode[2];
-// };
-
 use std::ptr::null_mut;
 
 pub const UTF_INVALID: usize = 0xFFFD;
@@ -37,7 +28,7 @@ impl Default for CSIEscape {
             private: false,
             arg: [0; ESC_ARG_SIZ],
             narg: 0,
-            mode: ['\0'; 2],
+            mode: [b'\0'; 2],
         }
     }
 }
