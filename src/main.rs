@@ -11,13 +11,16 @@ mod app;
 mod boxdraw;
 mod config;
 mod csiesq;
+mod font_registry;
 mod gl_handler;
 mod glyph;
 mod graphics;
 mod kitty;
 mod macros;
+mod renderers;
 mod sixel;
 mod terminal;
+mod text_manager;
 mod win;
 
 fn main() {

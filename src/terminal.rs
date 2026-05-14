@@ -177,8 +177,8 @@ pub struct Term {
     // Rune lastc;            /* last printed char outside of sequence, 0 if control */
     pub row: usize,
     pub col: usize,
-    pixw: usize,
-    pixh: usize,
+    pub pixw: usize,
+    pub pixh: usize,
     pub line: Vec<Line>,
     alt: Vec<Line>,
     pub dirty: Vec<bool>,

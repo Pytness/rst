@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use bitflags::Flags;
+use glow::HasContext;
 use glutin::config::ConfigTemplateBuilder;
 use glutin::display::GetGlDisplay;
 use glutin::prelude::{GlDisplay, PossiblyCurrentGlContext};
@@ -17,9 +18,13 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
+use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
+use crate::macros::macs::include_font;
+use crate::renderers::{self, TextRenderer};
 use crate::terminal::{Term, TermMode};
+use crate::text_manager::TermGlyph;
 use crate::win::{TermWindow, WinMode};
 
 pub struct AppState {
@@ -27,10 +32,15 @@ pub struct AppState {
     window: winit::window::Window,
 }
 
-pub struct App {
+pub struct App<'a> {
     gl_handler: GlHandler,
     app_state: Option<AppState>,
     gl: Option<Rc<glow::Context>>,
+
+    font_registry: FontRegistry,
+    text_renderer: Option<TextRenderer<'a>>,
+    quad_renderer: Option<renderers::QuadRenderer>,
+    conf_font_size_px: u32,
 
     term: Term,
     win: TermWindow,
@@ -38,7 +48,7 @@ pub struct App {
     rfd: libc::fd_set,
 }
 
-impl App {
+impl<'a> App<'a> {
     pub fn new(
         term: Term,
         win: TermWindow,
@@ -50,16 +60,34 @@ impl App {
         let ttyfd = term.ttynew(None, Some("/bin/zsh"), None, None);
         println!("ttyfd: {ttyfd}");
 
+        let mut font_registry = FontRegistry::new();
+
+        font_registry.register_font(
+            "CaskaydiaCove Nerd Font:size=10:antialias=true:autohint=true",
+            include_font!("CaskaydiaCoveNerdFont-Regular.ttf"),
+        );
+
         Self {
             gl_handler: GlHandler::new(template, display_builder),
             app_state: None,
             gl: None,
+
+            font_registry,
+            text_renderer: None,
+            quad_renderer: None,
+            conf_font_size_px: 16,
 
             term,
             win,
             ttyfd,
             rfd: unsafe { std::mem::zeroed() },
         }
+    }
+
+    /// SAFETY: This function should only be called after the OpenGL context has been created and made current in the `resumed` method.
+    /// Calling this function before that will result in undefined behavior.
+    pub unsafe fn gl(&self) -> &glow::Context {
+        self.gl.as_ref().unwrap()
     }
 
     pub fn kpress(&mut self, event: KeyEvent) {
@@ -160,6 +188,30 @@ impl App {
 
         self.gl_resize(size);
         // TODO: self.cresize(size.width, size.height);
+
+        unsafe {
+            self.quad_renderer = Some(renderers::QuadRenderer::new(
+                self.gl.as_ref().unwrap().clone(),
+                size.width as i32,
+                size.height as i32,
+            ));
+
+            self.quad_renderer.as_ref().unwrap().clear_section(
+                0,
+                0,
+                size.width as i32,
+                size.height as i32,
+                (0.0, 0.0, 0.0, 0.4),
+            );
+
+            self.text_renderer
+                .as_mut()
+                .unwrap()
+                .set_viewport(size.width as i32, size.height as i32);
+
+            self.gl()
+                .viewport(0, 0, size.width as i32, size.height as i32);
+        }
     }
 
     fn gl_resize(&mut self, size: PhysicalSize<u32>) {
@@ -247,13 +299,13 @@ impl App {
         self.drawregion(0, 0, self.term.col, self.term.row);
 
         let line = self.term.line[self.term.ocy].clone();
-        let g = &self.term.line[self.term.c.y][cx];
+        let g = &self.term.line[self.term.c.y][cx].clone();
         let og = &raw mut self.term.line[self.term.ocy][self.term.ocx];
 
         self.xdrawcursor(
             cx as usize,
             self.term.c.y as usize,
-            &self.term.line[self.term.c.y][cx],
+            &g,
             self.term.ocx as usize,
             self.term.ocy as usize,
             og,
@@ -276,6 +328,7 @@ impl App {
     }
 
     fn drawregion(&mut self, x1: i32, y1: i32, x2: usize, y2: usize) {
+        println!("Drawing region: ({}, {}) to ({}, {})", x1, y1, x2, y2);
         self.xstartimagedraw(&self.term.dirty, self.term.row);
 
         for y in y1 as usize..y2 {
@@ -284,14 +337,16 @@ impl App {
             }
 
             self.term.dirty[y] = false;
-            self.xdrawline(&self.term.line[y], x1, y, x2);
+            let line = &self.term.line[y].clone();
+            println!("Drawing line {}: {:?}", y, line);
+            self.xdrawline(line, x1, y, x2);
         }
 
         self.xfinishimagedraw();
     }
 
     fn xdrawcursor(
-        &self,
+        &mut self,
         cx: usize,
         cy: usize,
         g: &Glyph,
@@ -322,7 +377,7 @@ impl App {
         println!("xximspot");
     }
 
-    fn xdrawline(&self, line: &[Glyph], arg: i32, oy: usize, len: usize) {
+    fn xdrawline(&mut self, line: &[Glyph], x1: i32, y1: usize, x2: usize) {
         let i = 0;
         let x = 0;
         let ox = 0;
@@ -330,6 +385,36 @@ impl App {
 
         let base: Glyph = Glyph::default();
         let new: Glyph = Glyph::default();
+
+        fn u32_to_tuple(color: u32) -> (u8, u8, u8) {
+            let r = ((color >> 16) & 0xFF) as u8;
+            let g = ((color >> 8) & 0xFF) as u8;
+            let b = (color & 0xFF) as u8;
+
+            (r, g, b)
+        }
+
+        let glyphs = line[x1 as usize..x2].to_vec();
+        let glyphs: Vec<TermGlyph> = glyphs
+            .into_iter()
+            .map(|g| TermGlyph {
+                char: g.u,
+                fg_color: u32_to_tuple(g.fg),
+                bg_color: u32_to_tuple(g.bg),
+                font_style: FontStyle::Regular,
+            })
+            .collect();
+
+        unsafe {
+            self.quad_renderer.as_ref().unwrap().with(|| {
+                let proj = ortho(self.term.pixw as f32, self.term.pixh as f32);
+
+                self.text_renderer
+                    .as_mut()
+                    .unwrap()
+                    .draw_glyphs(&glyphs, 0, 0, &proj);
+            });
+        }
     }
 
     fn xstartimagedraw(&self, dirty: &[bool], row: usize) {
@@ -341,7 +426,7 @@ impl App {
     }
 }
 
-impl ApplicationHandler for App {
+impl<'a> ApplicationHandler for App<'a> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let gl_window = self.gl_handler.get_or_create_gl_window(event_loop);
 
@@ -375,42 +460,31 @@ impl ApplicationHandler for App {
         self.gl = Some(Rc::new(gl));
 
         self.win.mode.insert(WinMode::MODE_VISIBLE);
-        //
-        // self.triangle_renderer.get_or_insert_with(|| unsafe {
-        //     renderers::TriangleRenderer::new(self.gl.as_ref().unwrap().clone())
-        // });
-        // self.text_renderer.get_or_insert_with(|| unsafe {
-        //     TextRenderer::new(
-        //         self.gl.as_ref().unwrap().clone(),
-        //         &self.font_registry,
-        //         FONT_SIZE,
-        //     )
-        // });
 
         // FontRegistry must outlive TextRenderer
-        // self.text_renderer.get_or_insert_with(|| unsafe {
-        //     // This is safe because the font registry is owned by the App struct
-        //     // and will not be dropped while the TextRenderer is still in use.
-        //     let font_registry: &'a FontRegistry = &*(&self.font_registry as *const _);
-        //
-        //     let width = window.inner_size().width as i32;
-        //     let height = window.inner_size().height as i32;
-        //     TextRenderer::<'a>::new(
-        //         self.gl.as_ref().unwrap().clone(),
-        //         font_registry,
-        //         self.conf_font_size_px,
-        //         (width, height),
-        //     )
-        // });
-        //
-        // self.quad_renderer.get_or_insert_with(|| unsafe {
-        //     renderers::QuadRenderer::new(
-        //         self.gl.as_ref().unwrap().clone(),
-        //         window.inner_size().width as i32,
-        //         window.inner_size().height as i32,
-        //     )
-        // });
-        //
+        self.text_renderer.get_or_insert_with(|| unsafe {
+            // This is safe because the font registry is owned by the App struct
+            // and will not be dropped while the TextRenderer is still in use.
+            let font_registry: &'a FontRegistry = &*(&self.font_registry as *const _);
+
+            let width = window.inner_size().width as i32;
+            let height = window.inner_size().height as i32;
+            TextRenderer::<'a>::new(
+                self.gl.as_ref().unwrap().clone(),
+                font_registry,
+                self.conf_font_size_px,
+                (width, height),
+            )
+        });
+
+        self.quad_renderer.get_or_insert_with(|| unsafe {
+            renderers::QuadRenderer::new(
+                self.gl.as_ref().unwrap().clone(),
+                window.inner_size().width as i32,
+                window.inner_size().height as i32,
+            )
+        });
+
         self.app_state = Some(AppState { gl_surface, window });
     }
 
@@ -439,6 +513,9 @@ impl ApplicationHandler for App {
                 {
                     let gl_context = self.gl_handler.gl_context.as_ref().unwrap();
 
+                    unsafe {
+                        self.quad_renderer.as_ref().unwrap().render();
+                    }
                     gl_surface.swap_buffers(gl_context).unwrap();
                 }
 
@@ -485,4 +562,14 @@ impl ApplicationHandler for App {
 
         self.draw();
     }
+}
+
+fn ortho(width: f32, height: f32) -> [f32; 16] {
+    #[rustfmt::skip]
+    return [
+        2.0 / width, 0.0, 0.0, 0.0,
+        0.0, -2.0 / height, 0.0, 0.0,
+        0.0, 0.0, -1.0, 0.0,
+        -1.0, 1.0, 0.0, 1.0,
+    ];
 }
