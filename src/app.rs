@@ -189,6 +189,9 @@ impl<'a> App<'a> {
         self.gl_resize(size);
         // TODO: self.cresize(size.width, size.height);
 
+        self.term
+            .ttyresize(size.width as usize, size.height as usize);
+
         unsafe {
             self.quad_renderer = Some(renderers::QuadRenderer::new(
                 self.gl.as_ref().unwrap().clone(),
@@ -407,12 +410,13 @@ impl<'a> App<'a> {
 
         unsafe {
             self.quad_renderer.as_ref().unwrap().with(|| {
+                println!("Pixw: {}, Pixh: {}", self.term.pixw, self.term.pixh);
                 let proj = ortho(self.term.pixw as f32, self.term.pixh as f32);
 
                 self.text_renderer
                     .as_mut()
                     .unwrap()
-                    .draw_glyphs(&glyphs, 0, 0, &proj);
+                    .draw_glyphs(&glyphs, x1, y1 as i32, &proj);
             });
         }
     }

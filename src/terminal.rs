@@ -1,10 +1,32 @@
 use std::ptr::null_mut;
 
 use crate::boxdraw::boxdraw::isboxdraw;
+use crate::csiesq::CSIEscape;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::{BETWEEN, config};
 use bitflags::bitflags;
-use libc::{getenv, pselect};
+use libc::pselect;
+use unicode_width::UnicodeWidthChar;
+
+const STR_BUF_SIZ: usize = 128 * 4; // ESC_BUF_SIZ
+
+/// Holds the current STR/DCS/OSC/APC/PM escape sequence being accumulated.
+#[derive(Debug)]
+pub struct StrEscape {
+    /// The type byte of the escape sequence (e.g. b'P' for DCS)
+    pub type_: u8,
+    /// Raw accumulated bytes of the sequence
+    pub buf: Vec<u8>,
+}
+
+impl Default for StrEscape {
+    fn default() -> Self {
+        Self {
+            type_: 0,
+            buf: Vec::with_capacity(STR_BUF_SIZ),
+        }
+    }
+}
 
 // #define ISCONTROLC0(c) (BETWEEN(c, 0, 0x1f) || (c) == 0x7f)
 // #define ISCONTROLC1(c) (BETWEEN(c, 0x80, 0x9f))
@@ -77,14 +99,18 @@ enum Charset {
     CS_FIN = 6,
 }
 
-enum EscapeState {
-    ESC_START = 1,
-    ESC_CSI = 2,
-    ESC_STR = 4, /* DCS, OSC, PM, APC */
-    ESC_ALTCHARSET = 8,
-    ESC_STR_END = 16, /* a final string was encountered */
-    ESC_TEST = 32,    /* Enter in test mode */
-    ESC_UTF8 = 64,
+bitflags! {
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct EscapeState: u32 {
+        const ESC_START      = 1;
+        const ESC_CSI        = 2;
+        const ESC_STR        = 4;   /* DCS, OSC, PM, APC */
+        const ESC_ALTCHARSET = 8;
+        const ESC_STR_END    = 16;  /* a final string was encountered */
+        const ESC_TEST       = 32;  /* Enter in test mode */
+        const ESC_UTF8       = 64;
+        const ESC_DCS        = 128; /* Device Control String */
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -188,7 +214,7 @@ pub struct Term {
     top: usize,
     bot: usize,
     pub mode: TermMode,
-    esc: u32,
+    esc: EscapeState,
     trantbl: [Charset; 4],
     charset: usize,
     icharset: u32,
@@ -199,6 +225,8 @@ pub struct Term {
 
     // fields added on rewrite
     sel: Selection,
+    strescseq: StrEscape,
+    csiescseq: CSIEscape,
 }
 
 impl Term {
@@ -961,7 +989,7 @@ impl Term {
         // }
     }
 
-    pub fn ttywrite(&self, buffer: &[u8], len: usize, may_echo: bool) {
+    pub fn ttywrite(&mut self, buffer: &[u8], len: usize, may_echo: bool) {
         if may_echo && self.mode.contains(TermMode::MODE_ECHO) {
             self.twrite(&buffer, len, true);
         }
@@ -992,7 +1020,7 @@ impl Term {
         }
     }
 
-    fn twrite(&self, buffer: &[u8], buflen: usize, show_ctrl: bool) -> usize {
+    fn twrite(&mut self, buffer: &[u8], buflen: usize, show_ctrl: bool) -> usize {
         let mut charsize = 0;
         let mut i = 0;
         let mut u: char = '\0';
@@ -1049,7 +1077,7 @@ impl Term {
         return i;
     }
 
-    fn ttywriteraw(&self, buffer: &[u8], len: usize) {
+    fn ttywriteraw(&mut self, buffer: &[u8], len: usize) {
         let mut wfd: libc::fd_set = unsafe { std::mem::zeroed() };
         let mut rfd: libc::fd_set = unsafe { std::mem::zeroed() };
 
@@ -1135,11 +1163,426 @@ impl Term {
         }
     }
 
-    fn tputc(&self, arg: char) {
-        // println!("tputc called with '{}'", arg);
+    fn tputc(&mut self, u: char) {
+        let control = ISCONTROL(u);
+        let width = if !control {
+            u.width().unwrap_or(1) as i32
+        } else {
+            0
+        };
+
+        if self.mode.contains(TermMode::MODE_PRINT) {
+            self.tprinter(u);
+        }
+
+        /*
+         * STR sequence must be checked before anything else
+         * because it uses all following characters until it
+         * receives a ESC, a SUB, a ST or any other C1 control
+         * character.
+         */
+        if self.esc.contains(EscapeState::ESC_STR) {
+            if u == '\x07'
+                || u == '\u{0018}'
+                || u == '\u{001A}'
+                || u == '\u{001B}'
+                || ISCONTROLC1(u)
+            {
+                self.esc &= !(EscapeState::ESC_START | EscapeState::ESC_STR | EscapeState::ESC_DCS);
+                self.esc |= EscapeState::ESC_STR_END;
+                // fall through to check_control_code
+            } else {
+                if !self.esc.contains(EscapeState::ESC_DCS) {
+                    // Encode the character into UTF-8 and append to strescseq.buf
+                    let mut buf = [0u8; 4];
+                    let s = u.encode_utf8(&mut buf);
+                    self.strescseq.buf.extend_from_slice(s.as_bytes());
+                }
+                return;
+            }
+        }
+
+        // check_control_code:
+        if control {
+            /* in UTF-8 mode ignore handling C1 control characters */
+            if self.mode.contains(TermMode::MODE_UTF8) && ISCONTROLC1(u) {
+                return;
+            }
+            self.tcontrolcode(u);
+            if !self.esc.is_empty() {
+                // noop – sequence still ongoing
+            } else {
+                self.lastc = '\0';
+            }
+            return;
+        } else if self.esc.contains(EscapeState::ESC_START) {
+            if self.esc.contains(EscapeState::ESC_CSI) {
+                let idx = self.csiescseq.len;
+                self.csiescseq.buf[idx] = u;
+                self.csiescseq.len += 1;
+                let len = self.csiescseq.len;
+                if (u >= '\u{0040}' && u <= '\u{007E}')
+                    || len >= self.csiescseq.buf.len() - 1
+                {
+                    self.esc = EscapeState::empty();
+                    self.csiparse();
+                    self.csihandle();
+                }
+                return;
+            } else if self.esc.contains(EscapeState::ESC_DCS) {
+                let idx = self.csiescseq.len;
+                self.csiescseq.buf[idx] = u;
+                self.csiescseq.len += 1;
+                let len = self.csiescseq.len;
+                if (u >= '\u{0040}' && u <= '\u{007E}')
+                    || len >= self.csiescseq.buf.len() - 1
+                {
+                    self.csiparse();
+                    self.dcshandle();
+                }
+                return;
+            } else if self.esc.contains(EscapeState::ESC_UTF8) {
+                self.tdefutf8(u);
+            } else if self.esc.contains(EscapeState::ESC_ALTCHARSET) {
+                self.tdeftran(u);
+            } else if self.esc.contains(EscapeState::ESC_TEST) {
+                self.tdectest(u);
+            } else {
+                if !self.eschandle(u) {
+                    return;
+                }
+                /* sequence already finished */
+            }
+            self.esc = EscapeState::empty();
+            /*
+             * All characters which form part of a sequence are not printed
+             */
+            return;
+        }
+
+        if self.selected(self.c.x, self.c.y) {
+            self.selclear();
+        }
+
+        if width == 0 {
+            // Combining character – not properly supported; handle image diacritics
+            if self.c.y == 0 && self.c.x == 0 {
+                self.lastc = u;
+                return;
+            }
+
+            let (gx, gy): (usize, usize);
+            if self.c.x == 0 {
+                gy = self.c.y - 1;
+                gx = self.col - 1;
+            } else if self.c.state.contains(CursorState::CURSOR_WRAPNEXT) {
+                gy = self.c.y;
+                gx = self.c.x;
+            } else {
+                gy = self.c.y;
+                gx = self.c.x - 1;
+            }
+
+            let num = diacritic_to_num(u);
+            if num != 0 && self.line[gy][gx].mode.contains(GlyphAttribute::ATTR_IMAGE) {
+                let diaccount = tgetimgdiacriticcount(&self.line[gy][gx]);
+                if diaccount == 0 {
+                    tsetimgrow(&mut self.line[gy][gx], num as usize);
+                } else if diaccount == 1 {
+                    tsetimgcol(&mut self.line[gy][gx], num as usize);
+                } else if diaccount == 2 {
+                    tsetimg4thbyteplus1(&mut self.line[gy][gx], num);
+                }
+                tsetimgdiacriticcount(&mut self.line[gy][gx], diaccount as i32 + 1);
+            }
+            self.lastc = u;
+            return;
+        }
+
+        if self.mode.contains(TermMode::MODE_WRAP)
+            && self.c.state.contains(CursorState::CURSOR_WRAPNEXT)
+        {
+            let (cx, cy) = (self.c.x, self.c.y);
+            self.line[cy][cx].mode |= GlyphAttribute::ATTR_WRAP;
+            self.tnewline(1);
+        }
+
+        if self.mode.contains(TermMode::MODE_INSERT)
+            && (self.c.x + width as usize) < self.col
+        {
+            let cx = self.c.x;
+            let cy = self.c.y;
+            let move_count = self.col - cx - width as usize;
+            self.line[cy].copy_within(cx..cx + move_count, cx + width as usize);
+            self.line[cy][cx].mode &= !GlyphAttribute::ATTR_WIDE;
+        }
+
+        if self.c.x + width as usize > self.col {
+            if self.mode.contains(TermMode::MODE_WRAP) {
+                self.tnewline(1);
+            } else {
+                let w = width as usize;
+                let col = self.col;
+                self.tmoveto(col - w, self.c.y);
+            }
+        }
+
+        let (cx, cy) = (self.c.x, self.c.y);
+        self.tsetchar(u, &self.c.attr.clone(), cx, cy);
+        self.lastc = u;
+
+        if width == 2 {
+            let (cx, cy) = (self.c.x, self.c.y);
+            self.line[cy][cx].mode |= GlyphAttribute::ATTR_WIDE;
+            if cx + 1 < self.col {
+                if self.line[cy][cx + 1].mode == GlyphAttribute::ATTR_WIDE && cx + 2 < self.col {
+                    self.line[cy][cx + 2].u = ' ';
+                    self.line[cy][cx + 2].mode &= !GlyphAttribute::ATTR_WDUMMY;
+                }
+                self.line[cy][cx + 1].u = '\0';
+                self.line[cy][cx + 1].mode = GlyphAttribute::ATTR_WDUMMY;
+            }
+        }
+
+        let (cx, cy) = (self.c.x, self.c.y);
+        if cx + (width as usize) < self.col {
+            self.tmoveto(cx + width as usize, cy);
+        } else {
+            self.c.state |= CursorState::CURSOR_WRAPNEXT;
+        }
     }
 
-    pub fn ttyread(&self) -> usize {
+    fn tprinter(&self, _u: char) {
+        // TODO: print character to printer output
+    }
+
+    fn tcontrolcode(&mut self, u: char) {
+        match u {
+            '\t' => self.tputtab(1),
+            '\x08' => {
+                // BS
+                let x = self.c.x;
+                let y = self.c.y;
+                self.tmoveto(x.saturating_sub(1), y);
+            }
+            '\r' => {
+                let y = self.c.y;
+                self.tmoveto(0, y);
+            }
+            '\x0C' | '\x0B' | '\n' => {
+                // FF, VT, LF
+                self.tnewline(self.mode.contains(TermMode::MODE_CRLF) as usize);
+            }
+            '\x0F' => {
+                // SI – switch to charset 0
+                self.charset = 0;
+            }
+            '\x0E' => {
+                // SO – switch to charset 1
+                self.charset = 1;
+            }
+            '\x07' => {
+                // BEL
+                // TODO: ring bell
+            }
+            '\x1B' => {
+                // ESC
+                self.csiescseq = CSIEscape::default();
+                self.esc &= !(EscapeState::ESC_CSI
+                    | EscapeState::ESC_ALTCHARSET
+                    | EscapeState::ESC_TEST);
+                self.esc |= EscapeState::ESC_START;
+            }
+            '\u{0018}' | '\u{001A}' => {
+                // CAN / SUB
+                self.esc = EscapeState::empty();
+                // TODO: tputc('\u{FFFD}')  (replacement character)
+            }
+            '\u{0080}'..='\u{009F}' => {
+                // C1 control: treat as ESC + (c - 0x40)
+                let mapped = char::from_u32(u as u32 - 0x40).unwrap_or(u);
+                self.tcontrolcode('\x1B');
+                if !ISCONTROLC1(mapped) {
+                    self.tcontrolcode(mapped);
+                }
+            }
+            _ => {
+                // ignore other control codes
+            }
+        }
+    }
+
+    fn tputtab(&mut self, count: usize) {
+        let mut x = self.c.x;
+
+        for _ in 0..count {
+            x += 1;
+            while x < self.col && self.tabs[x] == 0 {
+                x += 1;
+            }
+        }
+        let y = self.c.y;
+        self.tmoveto(x, y);
+    }
+
+    fn tdefutf8(&mut self, u: char) {
+        match u {
+            'G' => self.mode.insert(TermMode::MODE_UTF8),
+            '@' => self.mode.remove(TermMode::MODE_UTF8),
+            _ => {}
+        }
+    }
+
+    fn tdeftran(&mut self, u: char) {
+        const CS: &[char] = &['B', '0', 'U', 'K'];
+        const VCSMAP: &[Charset] = &[
+            Charset::CS_USA,
+            Charset::CS_GRAPHIC0,
+            Charset::CS_GRAPHIC1,
+            Charset::CS_UK,
+        ];
+
+        if let Some(idx) = CS.iter().position(|&c| c == u) {
+            self.trantbl[self.icharset as usize] = VCSMAP[idx];
+        } else {
+            eprintln!("esc unhandled charset: '{}'", u);
+        }
+    }
+
+    fn tdectest(&mut self, u: char) {
+        if u == '8' {
+            // DEC screen alignment test: fill screen with 'E'
+            for y in 0..self.row {
+                for x in 0..self.col {
+                    self.tsetchar('E', &self.c.attr.clone(), x, y);
+                }
+            }
+        }
+    }
+
+    fn eschandle(&mut self, u: char) -> bool {
+        match u {
+            '[' => {
+                self.esc |= EscapeState::ESC_CSI;
+                return false;
+            }
+            '#' => {
+                self.esc |= EscapeState::ESC_TEST;
+                return false;
+            }
+            '%' => {
+                self.esc |= EscapeState::ESC_UTF8;
+                return false;
+            }
+            'P' | '_' | '^' | ']' | 'k' => {
+                self.strescseq = StrEscape::default();
+                self.strescseq.type_ = u as u8;
+                self.esc |= EscapeState::ESC_STR;
+                if u == 'P' {
+                    self.esc |= EscapeState::ESC_DCS;
+                }
+                return false;
+            }
+            'n' => {
+                self.charset = 2;
+            }
+            'o' => {
+                self.charset = 3;
+            }
+            '(' => {
+                self.icharset = 0;
+                self.esc |= EscapeState::ESC_ALTCHARSET;
+                return false;
+            }
+            ')' => {
+                self.icharset = 1;
+                self.esc |= EscapeState::ESC_ALTCHARSET;
+                return false;
+            }
+            '*' => {
+                self.icharset = 2;
+                self.esc |= EscapeState::ESC_ALTCHARSET;
+                return false;
+            }
+            '+' => {
+                self.icharset = 3;
+                self.esc |= EscapeState::ESC_ALTCHARSET;
+                return false;
+            }
+            'D' => {
+                self.tnewline(0);
+            }
+            'E' => {
+                let y = self.c.y;
+                self.tmoveto(0, y);
+                self.tnewline(0);
+            }
+            'H' => {
+                // Horizontal tab stop
+                let x = self.c.x;
+                self.tabs[x] = 1;
+            }
+            'M' => {
+                // Reverse index
+                if self.c.y == self.top {
+                    self.tscrolldown(self.top, 1);
+                } else {
+                    let x = self.c.x;
+                    let y = self.c.y - 1;
+                    self.tmoveto(x, y);
+                }
+            }
+            'Z' => {
+                // TODO: send terminal ID (DA)
+            }
+            'c' => {
+                self.treset();
+            }
+            '=' => {
+                // DECKPAM – application keypad
+                // TODO: win.mode |= MODE_APPKEYPAD
+            }
+            '>' => {
+                // DECKPNM – numeric keypad
+                // TODO: win.mode &= ~MODE_APPKEYPAD
+            }
+            '7' => {
+                self.tcursor(CursorMovement::CURSOR_SAVE);
+            }
+            '8' => {
+                self.tcursor(CursorMovement::CURSOR_LOAD);
+            }
+            '\\' => {
+                // ST (String Terminator) – handled by strhandle
+                if self.esc.contains(EscapeState::ESC_STR_END) {
+                    self.strhandle();
+                }
+            }
+            _ => {
+                eprintln!("erresc: unknown sequence ESC {:02X} '{}'", u as u32, u);
+            }
+        }
+
+        true
+    }
+
+    fn csiparse(&mut self) {
+        csiparse();
+    }
+
+    fn csihandle(&mut self) {
+        csihandle();
+    }
+
+    fn dcshandle(&mut self) {
+        dcshandle();
+    }
+
+    fn strhandle(&mut self) {
+        strhandle();
+    }
+
+    pub fn ttyread(&mut self) -> usize {
         println!("ttyread called");
         const BUF_SIZE: usize = 256;
         static mut BUF: [u8; 256] = unsafe { std::mem::zeroed() };
@@ -1221,6 +1664,14 @@ impl Term {
         }
     }
 }
+
+fn csiparse() {}
+
+fn csihandle() {}
+
+fn dcshandle() {}
+
+fn strhandle() {}
 
 fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
     unsafe {
@@ -1381,6 +1832,101 @@ fn tgetdecorcolor(g: &Glyph) -> u32 {
 
 fn tsetimgplacementid(g: &Glyph, placement_id: usize) {
     todo!()
+}
+
+/// Maps a Unicode combining diacritic character to its Kitty image protocol
+/// row/column number (1–295). Returns 0 if the character is not a recognized diacritic.
+fn diacritic_to_num(u: char) -> u32 {
+    let code = u as u32;
+    match code {
+        0x305 => code - 0x305 + 1,
+        0x30d..=0x30e => code - 0x30d + 2,
+        0x310 => code - 0x310 + 4,
+        0x312 => code - 0x312 + 5,
+        0x33d..=0x33f => code - 0x33d + 6,
+        0x346 => code - 0x346 + 9,
+        0x34a..=0x34c => code - 0x34a + 10,
+        0x350..=0x352 => code - 0x350 + 13,
+        0x357 => code - 0x357 + 16,
+        0x35b => code - 0x35b + 17,
+        0x363..=0x36f => code - 0x363 + 18,
+        0x483..=0x487 => code - 0x483 + 31,
+        0x592..=0x595 => code - 0x592 + 36,
+        0x597..=0x599 => code - 0x597 + 40,
+        0x59c..=0x5a1 => code - 0x59c + 43,
+        0x5a8..=0x5a9 => code - 0x5a8 + 49,
+        0x5ab..=0x5ac => code - 0x5ab + 51,
+        0x5af => code - 0x5af + 53,
+        0x5c4 => code - 0x5c4 + 54,
+        0x610..=0x617 => code - 0x610 + 55,
+        0x657..=0x65b => code - 0x657 + 63,
+        0x65d..=0x65e => code - 0x65d + 68,
+        0x6d6..=0x6dc => code - 0x6d6 + 70,
+        0x6df..=0x6e2 => code - 0x6df + 77,
+        0x6e4 => code - 0x6e4 + 81,
+        0x6e7..=0x6e8 => code - 0x6e7 + 82,
+        0x6eb..=0x6ec => code - 0x6eb + 84,
+        0x730 => code - 0x730 + 86,
+        0x732..=0x733 => code - 0x732 + 87,
+        0x735..=0x736 => code - 0x735 + 89,
+        0x73a => code - 0x73a + 91,
+        0x73d => code - 0x73d + 92,
+        0x73f..=0x741 => code - 0x73f + 93,
+        0x743 => code - 0x743 + 96,
+        0x745 => code - 0x745 + 97,
+        0x747 => code - 0x747 + 98,
+        0x749..=0x74a => code - 0x749 + 99,
+        0x7eb..=0x7f1 => code - 0x7eb + 101,
+        0x7f3 => code - 0x7f3 + 108,
+        0x816..=0x819 => code - 0x816 + 109,
+        0x81b..=0x823 => code - 0x81b + 113,
+        0x825..=0x827 => code - 0x825 + 122,
+        0x829..=0x82d => code - 0x829 + 125,
+        0x951 => code - 0x951 + 130,
+        0x953..=0x954 => code - 0x953 + 131,
+        0xf82..=0xf83 => code - 0xf82 + 133,
+        0xf86..=0xf87 => code - 0xf86 + 135,
+        0x135d..=0x135f => code - 0x135d + 137,
+        0x17dd => code - 0x17dd + 140,
+        0x193a => code - 0x193a + 141,
+        0x1a17 => code - 0x1a17 + 142,
+        0x1a75..=0x1a7c => code - 0x1a75 + 143,
+        0x1b6b => code - 0x1b6b + 151,
+        0x1b6d..=0x1b73 => code - 0x1b6d + 152,
+        0x1cd0..=0x1cd2 => code - 0x1cd0 + 159,
+        0x1cda..=0x1cdb => code - 0x1cda + 162,
+        0x1ce0 => code - 0x1ce0 + 164,
+        0x1dc0..=0x1dc1 => code - 0x1dc0 + 165,
+        0x1dc3..=0x1dc9 => code - 0x1dc3 + 167,
+        0x1dcb..=0x1dcc => code - 0x1dcb + 174,
+        0x1dd1..=0x1de6 => code - 0x1dd1 + 176,
+        0x1dfe => code - 0x1dfe + 198,
+        0x20d0..=0x20d1 => code - 0x20d0 + 199,
+        0x20d4..=0x20d7 => code - 0x20d4 + 201,
+        0x20db..=0x20dc => code - 0x20db + 205,
+        0x20e1 => code - 0x20e1 + 207,
+        0x20e7 => code - 0x20e7 + 208,
+        0x20e9 => code - 0x20e9 + 209,
+        0x20f0 => code - 0x20f0 + 210,
+        0x2cef..=0x2cf1 => code - 0x2cef + 211,
+        0x2de0..=0x2dff => code - 0x2de0 + 214,
+        0xa66f => code - 0xa66f + 246,
+        0xa67c..=0xa67d => code - 0xa67c + 247,
+        0xa6f0..=0xa6f1 => code - 0xa6f0 + 249,
+        0xa8e0..=0xa8f1 => code - 0xa8e0 + 251,
+        0xaab0 => code - 0xaab0 + 269,
+        0xaab2..=0xaab3 => code - 0xaab2 + 270,
+        0xaab7..=0xaab8 => code - 0xaab7 + 272,
+        0xaabe..=0xaabf => code - 0xaabe + 274,
+        0xaac1 => code - 0xaac1 + 276,
+        0xfe20..=0xfe26 => code - 0xfe20 + 277,
+        0x10a0f => code - 0x10a0f + 284,
+        0x10a38 => code - 0x10a38 + 285,
+        0x1d185..=0x1d189 => code - 0x1d185 + 286,
+        0x1d1aa..=0x1d1ad => code - 0x1d1aa + 291,
+        0x1d242..=0x1d244 => code - 0x1d242 + 295,
+        _ => 0,
+    }
 }
 
 fn gr_get_glyph_underneath_image(
