@@ -35,11 +35,11 @@ impl Default for CSIEscape {
 
 impl CSIEscape {
     pub fn parse(&mut self) {
-        let mut v = 0;
-        let mut sep = b';'; // colon or semi-colon, but not both
-
         let mut p: *const u8 = self.buf.as_ptr();
-        let mut np: *mut u8 = null_mut();
+        let mut np: *mut u8;
+
+        let mut v;
+        let mut sep = b';'; // colon or semi-colon, but not both
 
         self.narg = 0;
 
@@ -50,7 +50,8 @@ impl CSIEscape {
             self.buf[self.len] = 0;
 
             while p < self.buf.as_ptr().add(self.len) {
-                v = libc::strtol(p as *const i8, (np) as *mut *mut i8, 10);
+                np = null_mut();
+                v = libc::strtol(p as *const i8, (&raw mut np) as *mut *mut i8, 10);
 
                 if (np as *const u8).eq(&p) {
                     v = 0;
