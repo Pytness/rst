@@ -56,7 +56,7 @@ static mut iofd: i32 = 0;
 static mut cmdfd: i32 = 0;
 static mut pid: i32 = 0;
 // TODO: move this to config
-static vtiden: &[u8] = b"";
+pub static vtiden: &[u8] = b"";
 
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
@@ -228,10 +228,11 @@ pub struct Term {
     trantbl: [Charset; 4],
     charset: usize,
     icharset: u32,
-    tabs: Vec<usize>,
+    // TODO: make this bool
+    pub tabs: Vec<usize>,
     images: Vec<Image>,
     images_alt: Vec<Image>,
-    lastc: char,
+    pub lastc: char,
 
     // fields added on rewrite
     sel: Selection,
@@ -881,7 +882,7 @@ impl Term {
             && (y as isize != sel.ne.y || x as isize <= sel.ne.x);
     }
 
-    fn tdeleteimages(&self) {
+    pub fn tdeleteimages(&self) {
         // TODO: delete all images in the current screen
     }
 
@@ -1174,7 +1175,7 @@ impl Term {
     }
 
     // TODO: refactor this
-    fn tputc(&mut self, u: char) {
+    pub fn tputc(&mut self, u: char) {
         let control = ISCONTROL(u);
         let mut width = 0;
         let mut len = 0;
@@ -1463,7 +1464,7 @@ impl Term {
         }
     }
 
-    fn tputtab(&mut self, count: usize) {
+    pub fn tputtab(&mut self, count: usize) {
         let mut x = self.c.x;
 
         for _ in 0..count {
@@ -1629,7 +1630,8 @@ impl Term {
     }
 
     fn csihandle(&mut self) {
-        self.csiescseq.handle();
+        let ptr: *mut Self = self;
+        self.csiescseq.handle(ptr);
     }
 
     fn dcshandle(&mut self) {
@@ -1760,11 +1762,49 @@ impl Term {
 
     // TODO:
     fn xloadcols(&self) {}
+
+    pub fn tinsertblank(&mut self, n: usize) {
+        let src = self.c.x;
+        let dst = self.c.x + n;
+
+        let size = self.col - dst;
+        let line = &mut self.line[self.c.y];
+
+        line.copy_within(src..src + size, dst);
+        self.tclearregion(src, self.c.y, dst - 1, self.c.y);
+    }
+
+    pub fn tdumpline(&self, n: usize) {
+        // TODO: implement this
+        // char buf[UTF_SIZ];
+        // const Glyph *bp, *end;
+        //
+        // bp  = &term.line[n][0];
+        // end = &bp[MIN(tlinelen(n), term.col) - 1];
+        // if (bp != end || bp->u != ' ') {
+        // 	for (; bp <= end; ++bp) {
+        // 		tprinter(buf, utf8encode(bp->u, buf));
+        // 	}
+        // }
+        // tprinter("\n", 1);
+    }
+
+    pub fn tdump(&self) {
+        for i in 0..self.row {
+            self.tdumpline(i);
+        }
+    }
+
+    pub fn tdumpsel(&self) {
+        // TODO:
+        // char *ptr;
+        //
+        // if ((ptr = getsel())) {
+        // 	tprinter(ptr, strlen(ptr));
+        // 	free(ptr);
+        // }
+    }
 }
-
-fn csiparse() {}
-
-fn csihandle() {}
 
 fn dcshandle() {}
 
@@ -1933,6 +1973,7 @@ fn tsetimgplacementid(g: &Glyph, placement_id: usize) {
 
 /// Maps a Unicode combining diacritic character to its Kitty image protocol
 /// row/column number (1–295). Returns 0 if the character is not a recognized diacritic.
+// TODO: check correctness
 fn diacritic_to_num(u: char) -> u32 {
     let code = u as u32;
     match code {

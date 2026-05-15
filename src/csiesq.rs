@@ -1,5 +1,7 @@
 use std::ptr::null_mut;
 
+use crate::terminal::{Term, TermMode, vtiden};
+
 pub const UTF_INVALID: usize = 0xFFFD;
 pub const UTF_SIZ: usize = 4;
 pub const ESC_BUF_SIZ: usize = 128 * UTF_SIZ;
@@ -8,6 +10,14 @@ pub const STR_BUF_SIZ: usize = ESC_BUF_SIZ;
 pub const STR_ARG_SIZ: usize = ESC_ARG_SIZ;
 pub const STR_TERM_ST: &[u8] = b"\x1b\\";
 pub const STR_TERM_BEL: &[u8] = b"\007";
+
+macro_rules! DEFAULT {
+    ($src:expr, $value:expr) => {
+        if $src == 0 {
+            $src = $value;
+        }
+    };
+}
 
 #[derive(Debug)]
 pub struct CSIEscape {
@@ -86,8 +96,177 @@ impl CSIEscape {
         }
     }
 
-    pub fn handle(&self) {
-        // TODO:
+    pub fn handle(&mut self, term: *mut Term) {
+        let term = unsafe { &mut *term };
+        let maxcol = term.col;
+
+        let unknown = || {
+            eprint!("erresc: uknown csi ");
+            self.dump();
+        };
+
+        match self.mode[0] {
+            // ICH -- Insert <n> blank char
+            b'@' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tinsertblank(self.arg[0] as usize);
+            }
+
+            // CUU -- Cursor <n> Up
+            b'A' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tmoveto(term.c.x, term.c.y - self.arg[0] as usize);
+            }
+
+            b'B' | // CUD -- Cursor <n> Down
+            b'e'   // VPR -- Cursor <n> Down
+            => {
+                DEFAULT!(self.arg[0], 1);
+                term.tmoveto(term.c.x, term.c.y - self.arg[0] as usize);
+            }
+
+            // MC -- Media Copy
+            b'i' => {
+                match self.arg[0] {
+                    0 => term.tdump(),
+                    1 => term.tdumpline(term.c.y),
+                    2 => term.tdumpsel(),
+                    4 => term.mode.remove(TermMode::MODE_PRINT),
+                    5 => term.mode.insert(TermMode::MODE_PRINT),
+                    _ => {}
+                }
+            }
+
+            // dA -- Device Attributes
+            b'c' => {
+                if self.arg[0] == 0 {
+                    term.ttywrite(vtiden, vtiden.len(), false);
+                }
+            }
+
+            // REP -- if last char is printable print it <n> more times
+            b'b' => {
+                self.arg[0] = self.arg[0].max(1).min(65535);
+
+                if term.lastc != '\0' {
+                    for _ in 0..self.arg[0] {
+                        term.tputc(term.lastc);
+                    }
+                }
+            }
+
+            b'C' | // CUF -- Cursor <n> Forward
+            b'a'  // HPR -- Cursor <n> Forward
+            => {
+                DEFAULT!(self.arg[0], 1);
+                term.tmoveto(term.c.x + self.arg[0] as usize, term.c.y);
+            }
+
+            // CUB  -- Cursor <n> Backward
+            b'D' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tmoveto(term.c.x - self.arg[0] as usize, term.c.y);
+            }
+
+            // CNL -- Cursor <n> Down and first col
+            b'E' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tmoveto(0, term.c.y + self.arg[0] as usize);
+            }
+
+            // CPL -- Cursor <n> Up and first col
+            b'F' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tmoveto(0, term.c.y - self.arg[0] as usize);
+            }
+
+            // TBC -- Tabulation clear
+            b'g' => {
+                match self.arg[0] {
+                    // clear current tab sotp
+                    0 => term.tabs[term.c.x] = 0,
+                    // clear all the tabs
+                    3 => term.tabs.iter_mut().for_each(|t| *t = 0),
+                    _ =>  unknown(),
+
+                }
+            }
+
+            b'G' | // CHA -- Move to <col>
+            b'`'   // HPA
+            => {
+                DEFAULT!(self.arg[0], 1);
+                term.tmoveto(self.arg[0] as usize - 1, term.c.y);
+            }
+
+            b'H' | // CUP -- Move to <row> <column>
+            b'f'   // HVP
+            => {
+                DEFAULT!(self.arg[0], 1);
+                DEFAULT!(self.arg[1], 1);
+                term.tmoveato(self.arg[1] as usize - 1, self.arg[0] as usize - 1);
+            }
+
+            // CHT -- CUrsor Forwar Tabulation <n> tab stops
+            b'I' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tputtab(self.arg[0] as usize);
+            }
+
+            // ED -- Clear screen
+            b'J' => {
+                match self.arg[0] {
+                    // below
+                    0 => {
+			term.tclearregion(term.c.x, term.c.y, maxcol - 1, term.c.y);
+                        if term.c.y < term.row - 1 {
+                            term.tclearregion(0, term.c.y + 1, maxcol - 1, term.row - 1);
+                        }
+                    }
+                    // above
+                    1 => {
+                        if term.c.y > 0 {
+                            term.tclearregion(0, 0, maxcol - 1, term.c.y - 1);
+                        }
+                        term.tclearregion(0, term.c.y, term.c.x, term.c.y);
+                    }
+                    // screen
+                    2 => {
+                        term.tclearregion(0, 0, maxcol - 1, term.row - 1);
+                        term.tdeleteimages();
+                    }
+                    // scrollback
+                    3 => {
+                        // for (im = term.images; im; im = next) {
+                        // 	next = im->next;
+                        // 	if (im->y < 0) {
+                        // 		delete_image(im);
+                        // 	}
+                        // }
+                    }
+                    // sixels
+                    6 => {
+                        term.tdeleteimages();
+                        term.tfulldirt();
+                    }
+                    _ => unknown(),
+                }
+            }
+            // EL -- Clear line
+            b'K' => {
+                match self.arg[0] {
+                    // right
+                    0 => term.tclearregion(term.c.x, term.c.y, maxcol - 1, term.c.y),
+                    // left
+                    1 => term.tclearregion(0, term.c.y, term.c.x, term.c.y),
+                    // all
+                    2 => term.tclearregion(0, term.c.y, maxcol - 1, term.c.y),
+                    _ => {}
+                }
+            }
+
+            _ => unknown(),
+        }
     }
 
     pub fn dump(&self) {
