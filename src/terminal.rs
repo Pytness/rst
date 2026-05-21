@@ -1132,7 +1132,7 @@ impl Term {
                     panic!("select failed: {}", std::io::Error::last_os_error());
                 }
 
-                if libc::FD_ISSET(cmdfd, &mut rfd) {
+                if libc::FD_ISSET(cmdfd, &mut wfd) {
                     /*
                      * Only write the bytes written by ttywrite() or the
                      * default of 256. This seems to be a reasonable value
@@ -1167,7 +1167,7 @@ impl Term {
                     println!("select returned but cmdfd is not writable");
                 }
 
-                if libc::FD_ISSET(cmdfd, &mut wfd) {
+                if libc::FD_ISSET(cmdfd, &mut rfd) {
                     lim = self.ttyread();
                 }
             }
