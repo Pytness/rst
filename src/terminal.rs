@@ -988,16 +988,21 @@ impl Term {
         self.pixw = tw;
         self.pixh = th;
 
-        // TODO:
-        // struct winsize w;
-        // //
-        // w.ws_row    = term.row;
-        // w.ws_col    = term.col;
-        // w.ws_xpixel = tw;
-        // w.ws_ypixel = th;
-        // if (ioctl(cmdfd, TIOCSWINSZ, &w) < 0) {
-        // 	fprintf(stderr, "Couldn't set window size: %s\n", strerror(errno));
-        // }
+        let w = libc::winsize {
+            ws_row: self.row as u16,
+            ws_col: self.col as u16,
+            ws_xpixel: tw as u16,
+            ws_ypixel: th as u16,
+        };
+
+        unsafe {
+            if libc::ioctl(cmdfd, libc::TIOCSWINSZ, &w) < 0 {
+                panic!(
+                    "Couldn't set window size: {}",
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
     }
 
     pub fn ttywrite(&mut self, buffer: &[u8], len: usize, may_echo: bool) {
