@@ -196,7 +196,7 @@ pub struct Image {
 
 /* Internal representation of the screen */
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct Term {
     // int row;         /* nb row */
     // int col;         /* nb col */
@@ -247,6 +247,8 @@ pub struct Term {
     strescseq: StrEscape,
     csiescseq: CSIEscape,
     win: *mut TermWindow,
+    // HACK: NEED TO REMOVE THIS ASAP
+    pub draw: Option<Box<dyn FnMut()>>,
 }
 
 impl Term {
@@ -1785,7 +1787,20 @@ impl Term {
     }
 
     // TODO:
-    fn xsetmode(&self, set: i32, mode: WinMode) {}
+    fn xsetmode(&mut self, set: i32, mode: WinMode) {
+        let win = unsafe { &mut *self.win };
+        let mode = win.mode;
+
+        if set != 0 {
+            win.mode.insert(mode);
+        } else {
+            win.mode.remove(mode);
+        }
+
+        if (win.mode & WinMode::MODE_REVERSE) != (mode & WinMode::MODE_REVERSE) {
+            self.redraw();
+        }
+    }
 
     // TODO:
     fn xloadcols(&self) {}
@@ -1838,9 +1853,7 @@ impl Term {
         // }
     }
 
-    pub fn tsetmode(&self, private: bool, set: i32, args: &[i32], narg: usize) {
-        // TODO: implement this
-    }
+    pub fn tsetmode(&self, private: bool, set: i32, args: &[i32], narg: usize) {}
 
     pub fn tdeleteline(&mut self, n: usize) {
         if BETWEEN!(self.c.y, self.top, self.bot) {
@@ -2096,6 +2109,13 @@ impl Term {
     fn tsetdecorcolor(&self, g: *mut Glyph, color: u32) {
         let g = unsafe { &mut *g };
         g.decoration = (g.decoration & !0x1ffffff) | (color & 0x1ffffff);
+    }
+
+    fn redraw(&mut self) {
+        self.tfulldirt();
+        if let Some(draw) = self.draw.as_mut() {
+            draw();
+        }
     }
 }
 

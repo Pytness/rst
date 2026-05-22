@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::ffi::{CString, c_void};
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Instant;
@@ -277,7 +277,7 @@ impl<'a> App<'a> {
     pub fn bpress(&mut self) {}
     pub fn brelease(&mut self) {}
 
-    fn draw(&mut self) {
+    pub fn draw(&mut self) {
         let mut cx = self.term.c.x;
         let mut ocx = self.term.ocx;
         let mut ocy = self.term.c.y;
@@ -442,6 +442,21 @@ impl<'a> App<'a> {
 
 impl<'a> ApplicationHandler for App<'a> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        static mut ptr: *mut App = std::ptr::null_mut::<App>();
+        unsafe {
+            let void = self as *mut App as *mut c_void;
+
+            ptr = void as *mut App;
+        }
+
+        let draw: Box<dyn FnMut() -> ()> = Box::new(move || unsafe {
+            (*ptr).draw();
+        });
+
+        self.term.draw = Some(draw);
+
+        // make draw static
+
         let gl_window = self.gl_handler.get_or_create_gl_window(event_loop);
 
         if gl_window.is_none() {

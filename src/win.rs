@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct WinMode: u32 {
         const MODE_VISIBLE     = 1 << 0;
         const MODE_FOCUSED     = 1 << 1;
