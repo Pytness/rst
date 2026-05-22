@@ -1200,7 +1200,9 @@ impl Term {
         } else {
             len = u.len_utf8();
 
-            if !control && u.width().unwrap_or(0) == 0 {
+            width = u.width().unwrap_or(0);
+
+            if !control && width == 0 {
                 width = 1;
             }
         }
