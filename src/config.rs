@@ -47,3 +47,8 @@ pub const VALIGN: f64 = 0.5;
 
 pub const mshortcuts: Vec<MouseShortcut> = vec![];
 pub const shortcuts: Vec<Shortcut> = vec![];
+
+pub const defaultfg: u32 = 258;
+pub const defaultbg: u32 = 259;
+pub const defaultcs: u32 = 256;
+pub const defaultrcs: u32 = 257;

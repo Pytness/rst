@@ -18,12 +18,13 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
+use crate::colors::COLORS;
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::macros::macs::include_font;
 use crate::renderers::{self, TextRenderer};
-use crate::terminal::{Term, TermMode};
+use crate::terminal::{IS_TRUECOL, Term, TermMode};
 use crate::text_manager::TermGlyph;
 use crate::win::{TermWindow, WinMode};
 
@@ -344,7 +345,7 @@ impl<'a> App<'a> {
 
             self.term.dirty[y] = false;
             let line = &self.term.line[y].clone();
-            println!("Drawing line {}: {:?}", y, line);
+            println!("Drawing line {}", y);
             self.xdrawline(line, x1, y, x2);
         }
 
@@ -393,6 +394,12 @@ impl<'a> App<'a> {
         let new: Glyph = Glyph::default();
 
         fn u32_to_tuple(color: u32) -> (u8, u8, u8) {
+            let color = if !IS_TRUECOL(color) {
+                COLORS[color as usize]
+            } else {
+                color
+            };
+
             let r = ((color >> 16) & 0xFF) as u8;
             let g = ((color >> 8) & 0xFF) as u8;
             let b = (color & 0xFF) as u8;
@@ -568,6 +575,9 @@ impl<'a> ApplicationHandler for App<'a> {
         }
 
         self.draw();
+        // if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
+        //     window.request_redraw();
+        // }
     }
 }
 

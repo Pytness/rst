@@ -9,6 +9,7 @@ use self::win::TermWindow;
 
 mod app;
 mod boxdraw;
+mod colors;
 mod config;
 mod csiesq;
 mod font_registry;

@@ -12,6 +12,14 @@ use unicode_width::UnicodeWidthChar;
 const STR_BUF_SIZ: usize = 128 * 4; // ESC_BUF_SIZ
 const UTF_SIZ: usize = 4;
 
+fn TRUECOLOR(r: u8, g: u8, b: u8) -> u32 {
+    1 << 24 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+}
+
+pub fn IS_TRUECOL(c: u32) -> bool {
+    (c & (1 << 24)) != 0
+}
+
 /// Holds the current STR/DCS/OSC/APC/PM escape sequence being accumulated.
 #[derive(Debug)]
 pub struct StrEscape {
@@ -1470,17 +1478,26 @@ impl Term {
         }
     }
 
-    pub fn tputtab(&mut self, count: usize) {
+    pub fn tputtab(&mut self, count: isize) {
         let mut x = self.c.x;
 
-        for _ in 0..count {
-            x += 1;
-            while x < self.col && self.tabs[x] == 0 {
+        if count > 0 {
+            while x < self.col && count > 0 {
                 x += 1;
+                while x < self.col && self.tabs[x] == 0 {
+                    x += 1;
+                }
+            }
+        } else if count < 0 {
+            while x > 0 && count < 0 {
+                x -= 1;
+                while x > 0 && self.tabs[x] == 0 {
+                    x -= 1;
+                }
             }
         }
-        let y = self.c.y;
-        self.tmoveto(x, y);
+
+        self.c.x = x.min(self.col - 1)
     }
 
     fn tdefutf8(&mut self, u: char) {
@@ -1782,6 +1799,12 @@ impl Term {
         self.tclearregion(src, self.c.y, dst - 1, self.c.y);
     }
 
+    pub fn tinsertblankline(&mut self, n: usize) {
+        if BETWEEN!(self.c.y, self.top, self.bot) {
+            self.tscrollup(self.c.y, n);
+        }
+    }
+
     pub fn tdumpline(&self, n: usize) {
         // TODO: implement this
         // char buf[UTF_SIZ];
@@ -1811,6 +1834,266 @@ impl Term {
         // 	tprinter(ptr, strlen(ptr));
         // 	free(ptr);
         // }
+    }
+
+    pub fn tsetmode(&self, private: bool, set: i32, args: &[i32], narg: usize) {
+        // TODO: implement this
+    }
+
+    pub fn tdeleteline(&mut self, n: usize) {
+        if BETWEEN!(self.c.y, self.top, self.bot) {
+            self.tscrollup(self.c.y, n);
+        }
+    }
+
+    pub fn tdeletechar(&mut self, n: usize) {
+        let n = n.min(self.col - self.c.x);
+
+        let dst = self.c.x;
+        let src = self.c.x + n;
+        let size = self.col - src;
+        let line = &mut self.line[self.c.y];
+
+        // TODO: check if this is correct
+        // memmove(&line[dst], &line[src], size * sizeof(Glyph));
+        line.copy_within(src..src + size, dst);
+        self.tclearregion(self.col - n, self.c.y, self.col - 1, self.c.y);
+    }
+
+    pub fn tsetattr(&mut self, attr: &[i32], l: usize) {
+        let mut index = 0;
+
+        let mut i = 0;
+        while i < l {
+            let a = attr[i] as u32;
+
+            match a {
+                0 => {
+                    self.c.attr.mode &= !(GlyphAttribute::ATTR_BOLD
+                        | GlyphAttribute::ATTR_FAINT
+                        | GlyphAttribute::ATTR_ITALIC
+                        | GlyphAttribute::ATTR_UNDERLINE
+                        | GlyphAttribute::ATTR_BLINK
+                        | GlyphAttribute::ATTR_REVERSE
+                        | GlyphAttribute::ATTR_INVISIBLE
+                        | GlyphAttribute::ATTR_STRUCK);
+
+                    self.c.attr.fg = config::defaultfg;
+                    self.c.attr.bg = config::defaultbg;
+                    self.c.attr.decoration = DECOR_DEFAULT_COLOR;
+                }
+
+                1 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_BOLD;
+                }
+
+                2 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_FAINT;
+                }
+
+                3 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_ITALIC;
+                }
+
+                4 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_UNDERLINE;
+
+                    if i + 1 < l {
+                        i += 1;
+                        let idx = attr[i] as u32;
+
+                        if BETWEEN!(idx, 1, 5) {
+                            let g = &mut self.c.attr as *mut Glyph;
+
+                            self.tsetdecorstyle(g, idx);
+                        } else if idx == 0 {
+                            self.c.attr.mode.remove(GlyphAttribute::ATTR_UNDERLINE);
+
+                            let g = &mut self.c.attr as *mut Glyph;
+                            self.tsetdecorstyle(g, 0);
+                        } else {
+                            eprintln!("erresc: unknown underline style {}", idx);
+                        }
+                    }
+                }
+
+                // TODO: implement slow and rapid blink
+                5 | // slow blink
+                6   // rapid blink
+                => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_BLINK;
+                }
+
+                7 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_REVERSE;
+                }
+
+                8 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_INVISIBLE;
+                }
+
+                9 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_STRUCK;
+                }
+
+                22 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_BOLD | GlyphAttribute::ATTR_FAINT);
+                }
+
+                23 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_ITALIC);
+                }
+
+                24 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_UNDERLINE);
+
+                    let g = &mut self.c.attr as *mut Glyph;
+                    self.tsetdecorstyle(g, 0);
+                }
+
+                25 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_BLINK);
+                }
+
+                27 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_REVERSE);
+                }
+
+                28 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_INVISIBLE);
+                }
+
+                29 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_STRUCK);
+                }
+
+                38 => {
+                    let idx = self.tdefcolor(&attr, &mut i, l);
+
+                    if idx >= 0 {
+                        self.c.attr.fg = idx as u32;
+                    }
+                }
+
+                39 => {
+                    self.c.attr.fg = config::defaultfg;
+                }
+
+                48 => {
+                    let idx = self.tdefcolor(&attr, &mut i, l);
+
+                    if idx >= 0 {
+                        self.c.attr.bg = idx as u32;
+                    }
+                }
+
+                49 => {
+                    self.c.attr.bg = config::defaultbg;
+                }
+
+                // underline decoration color
+                58 => {
+                    let idx = self.tdefcolor(&attr, &mut i, l);
+
+                    if idx >= 0 {
+                        let g = &mut self.c.attr as *mut Glyph;
+                        self.tsetdecorcolor(g, idx as u32);
+                    }
+                }
+
+                59 => {
+                    let g = &mut self.c.attr as *mut Glyph;
+                    self.tsetdecorcolor(g, DECOR_DEFAULT_COLOR);
+                }
+
+                _ => {
+                    if BETWEEN!(a, 30, 37) {
+                        self.c.attr.bg = a - 30;
+                    } else if BETWEEN!(a, 40, 47) {
+                        self.c.attr.fg = a - 40;
+                    } else if BETWEEN!(a, 90, 97) {
+                        self.c.attr.bg = a - 90 + 8;
+                    } else if BETWEEN!(a, 100, 107) {
+                        self.c.attr.fg = a - 100 + 8;
+                    } else {
+                        eprintln!("erresc(default): gfx attr {} unkwnon", a);
+                        // TODO: CSI DUMP
+                    }
+                }
+            }
+
+            i += 1;
+        }
+    }
+
+    fn tsetdecorstyle(&self, g: *mut Glyph, style: u32) {
+        let g = unsafe { &mut *g };
+        g.decoration = (g.decoration & !(0x7 << 25)) | ((style & 0x7) << 25);
+    }
+
+    fn tdefcolor(&self, attr: &[i32], npar: &mut usize, l: usize) -> i32 {
+        let mut idx = -1;
+        let mut r = 0;
+        let mut g = 0;
+        let mut b = 0;
+
+        match attr[*npar + 1] {
+            // direct color in RGB space
+            2 if *npar + 4 >= l => {
+                eprintln!("erresc(38): Incorrect number of parameters ({})", *npar);
+            }
+            2 => {
+                if attr[*npar] == 58 {
+                    r = attr[*npar + 3] as u32;
+                    g = attr[*npar + 4] as u32;
+                    b = attr[*npar + 5] as u32;
+
+                    *npar += 5;
+                } else {
+                    r = attr[*npar + 2] as u32;
+                    g = attr[*npar + 3] as u32;
+                    b = attr[*npar + 4] as u32;
+
+                    *npar += 4;
+                }
+
+                let valid_color = r <= 255 && g <= 255 && b <= 255;
+                if !valid_color {
+                    eprintln!("erresc: invalid rgb color ({}, {}, {})", r, g, b);
+                } else {
+                    idx = TRUECOLOR(r as u8, g as u8, b as u8) as i32;
+                }
+            }
+
+            // indexed color
+            5 if *npar + 2 >= l => {
+                eprintln!("erresc(38): Incorrect number of parameters ({})", *npar);
+            }
+            5 => {
+                *npar += 2;
+
+                if !BETWEEN!(attr[*npar], 0, 255) {
+                    eprintln!("erresc: bad fgcolor ({})", attr[*npar]);
+                } else {
+                    idx = attr[*npar];
+                }
+            }
+
+            0 | // Implemented defined (only foreground)
+            1 | // TODO: transparent
+            3 | // direct color in CMY space
+            4 | // direct color in CMYK space
+            _ => {
+                eprintln!("erresc(38): gfx attr {} unkown", attr[*npar]);
+            }
+        }
+
+        idx
+    }
+
+    fn tsetdecorcolor(&self, g: *mut Glyph, color: u32) {
+        let g = unsafe { &mut *g };
+        g.decoration = (g.decoration & !0x1ffffff) | (color & 0x1ffffff);
     }
 }
 

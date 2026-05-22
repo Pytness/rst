@@ -213,7 +213,7 @@ impl CSIEscape {
             // CHT -- CUrsor Forwar Tabulation <n> tab stops
             b'I' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tputtab(self.arg[0] as usize);
+                term.tputtab(self.arg[0] as isize);
             }
 
             // ED -- Clear screen
@@ -332,6 +332,64 @@ impl CSIEscape {
                 DEFAULT!(self.arg[0], 1);
                 term.tscrollup(term.top, self.arg[0] as usize);
             }
+
+            // SD -- Scroll Mn> line down
+            b'T' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tscrolldown(term.top, self.arg[0] as usize);
+            }
+
+            // IL -- Insert <n> blank line(s)
+            b'L' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tinsertblankline(self.arg[0] as usize);
+            }
+
+            // RM -- Reset Mode
+            b'l' => {
+                term.tsetmode(self.private, 0, &self.arg, self.narg);
+            },
+
+            // DL -- Delete Mn> lines
+            b'M' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tdeleteline(self.arg[0] as usize);
+            }
+
+            // ECH -- Erase <n> char
+            b'X' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tclearregion(term.c.x, term.c.y, term.c.x + (self.arg[0] - 1) as usize, term.c.y);
+            }
+
+            // DCH -- Delete <n> char
+            b'P' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tdeletechar(self.arg[0] as usize);
+            }
+
+            // CBT -- Cursor Backward Tabulation <n> tab stops
+            b'Z' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tputtab(-self.arg[0] as isize);
+            }
+
+            // VPA -- Move to <row>
+            b'd' => {
+                DEFAULT!(self.arg[0], 1);
+                term.tmoveto(term.c.x, self.arg[0] as usize - 1);
+            }
+
+            // SM -- Set terminal mode
+            b'h' => {
+                term.tsetmode(self.private, 1, &self.arg, self.narg);
+            }
+
+            // SGR - Terminal attribute (color)
+            b'm' => {
+                term.tsetattr(&self.arg, self.narg);
+            }
+
 
 
 
