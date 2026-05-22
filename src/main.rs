@@ -27,8 +27,9 @@ fn main() {
     let cols = 80;
     let rows = 24;
 
-    let mut term = Term::new(cols, rows);
     let mut win = TermWindow::default();
+
+    let mut term = Term::new(cols, rows, &mut win as *mut TermWindow);
 
     // xinit
 

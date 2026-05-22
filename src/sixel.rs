@@ -53,11 +53,11 @@ impl Hash for ImageList {
     }
 }
 
-const DECSIXEL_PARAMS_MAX: usize = 16;
-const DECSIXEL_PALETTE_MAX: usize = 1024;
-const DECSIXEL_PARAMVALUE_MAX: u16 = 65535;
-const DECSIXEL_WIDTH_MAX: usize = 4096;
-const DECSIXEL_HEIGHT_MAX: usize = 4096;
+pub const DECSIXEL_PARAMS_MAX: usize = 16;
+pub const DECSIXEL_PALETTE_MAX: usize = 1024;
+pub const DECSIXEL_PARAMVALUE_MAX: u16 = 65535;
+pub const DECSIXEL_WIDTH_MAX: usize = 4096;
+pub const DECSIXEL_HEIGHT_MAX: usize = 4096;
 
 type SixelColorNo = u16;
 type SixelColor = u32;

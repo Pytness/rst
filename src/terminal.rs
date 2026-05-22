@@ -3,7 +3,7 @@ use std::ptr::{null, null_mut};
 use crate::boxdraw::boxdraw::isboxdraw;
 use crate::csiesq::{CSIEscape, STR_TERM_ST};
 use crate::glyph::{Glyph, GlyphAttribute};
-use crate::win::WinMode;
+use crate::win::{TermWindow, WinMode};
 use crate::{BETWEEN, config};
 use bitflags::bitflags;
 use libc::pselect;
@@ -221,8 +221,8 @@ pub struct Term {
     pub c: TCursor,
     pub ocx: usize,
     pub ocy: usize,
-    top: usize,
-    bot: usize,
+    pub top: usize,
+    pub bot: usize,
     pub mode: TermMode,
     esc: EscapeState,
     trantbl: [Charset; 4],
@@ -238,12 +238,13 @@ pub struct Term {
     sel: Selection,
     strescseq: StrEscape,
     csiescseq: CSIEscape,
+    win: *mut TermWindow,
 }
 
 impl Term {
-    pub fn new(col: usize, row: usize) -> Self {
+    pub fn new(col: usize, row: usize, win: *mut TermWindow) -> Self {
         let mut term = Term {
-            c: TCursor::default(),
+            win,
             ..Default::default()
         };
 
@@ -393,7 +394,7 @@ impl Term {
         self.selscroll(orig, n as isize);
     }
 
-    fn tscrollup(&mut self, orig: usize, n: usize) {
+    pub fn tscrollup(&mut self, orig: usize, n: usize) {
         // ImageList *im, *next;
 
         let n = n.min(self.bot - orig + 1);
@@ -1635,8 +1636,10 @@ impl Term {
     }
 
     fn csihandle(&mut self) {
-        let ptr: *mut Self = self;
-        self.csiescseq.handle(ptr);
+        let term_ptr: *mut Self = self;
+        let win_ptr: *mut TermWindow = self.win;
+
+        self.csiescseq.handle(term_ptr, win_ptr);
     }
 
     fn dcshandle(&mut self) {

@@ -1,6 +1,8 @@
 use std::ptr::null_mut;
 
+use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
 use crate::terminal::{Term, TermMode, vtiden};
+use crate::win::TermWindow;
 
 pub const UTF_INVALID: usize = 0xFFFD;
 pub const UTF_SIZ: usize = 4;
@@ -96,8 +98,9 @@ impl CSIEscape {
         }
     }
 
-    pub fn handle(&mut self, term: *mut Term) {
+    pub fn handle(&mut self, term: *mut Term, win: *mut TermWindow) {
         let term = unsafe { &mut *term };
+        let win = unsafe { &mut *win };
         let maxcol = term.col;
 
         let unknown = || {
@@ -264,6 +267,73 @@ impl CSIEscape {
                     _ => {}
                 }
             }
+
+            // Su -- Scroll <n> line up ; XTSMGRAPHICS
+            b'S' => {
+                if self.private {
+                    if self.narg > 1 {
+                        // XTSMGRAPHICS
+                        let pi = self.arg[0];
+                        let pa = self.arg[1];
+                        let pa_is_valid = pa == 1 || pa == 2 || pa == 4;
+
+                        // TODO: replace snprintf if possible
+                        let mut buffer = [0u8; 40];
+                        if pi == 1 && pa_is_valid {
+                            // number of sixel color registers
+                            // (read, reset and read the maximum value give the same response)
+                            let n = unsafe {
+                                libc::snprintf(
+                                    buffer.as_mut_ptr() as *mut i8,
+                                    buffer.len(),
+                                    b"\x1b[?1;0;%dS\0".as_ptr() as *const i8,
+                                    DECSIXEL_PALETTE_MAX
+                                )
+
+                            };
+
+                            term.ttywrite(&buffer, n as usize, true);
+                        } else if pi == 2 && pa_is_valid {
+                            // sixel graphics geometry (in pixels)
+                            // (read, reset and read the maximum value give the same response)
+
+                            let n = unsafe {
+                                libc::snprintf(
+                                    buffer.as_mut_ptr() as *mut i8,
+                                    buffer.len(),
+                                    b"\x1b[?2;0;%d;%dS\0".as_ptr() as *const i8,
+                                    (term.col * win.cw as usize).min(DECSIXEL_WIDTH_MAX),
+                                    (term.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX)
+                                )
+
+                            };
+
+                            term.ttywrite(&buffer, n as usize, true);
+                        } else {
+                            // the number of color registers and sixel geometry can't be changed
+                            // failure
+                            let n = unsafe {
+                                libc::snprintf(
+                                    buffer.as_mut_ptr() as *mut i8,
+                                    buffer.len(),
+                                    b"\x1b[?%d;3;0S\0".as_ptr() as *const i8,
+                                    pi
+                                )
+
+                            };
+                            term.ttywrite(&buffer, n as usize, true);
+                            unknown();
+                        }
+                    } else {
+                        unknown();
+                    }
+                }
+
+                DEFAULT!(self.arg[0], 1);
+                term.tscrollup(term.top, self.arg[0] as usize);
+            }
+
+
 
             _ => unknown(),
         }
