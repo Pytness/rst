@@ -177,7 +177,6 @@ impl<'a> App<'a> {
         }
 
         self.term.ttywrite(&buffer, len, true);
-        self.term.ttyread();
 
         if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
             window.request_redraw();
