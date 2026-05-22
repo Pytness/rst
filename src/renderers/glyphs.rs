@@ -202,7 +202,7 @@ impl<'a> TextRenderer<'a> {
             gl.enable(glow::SCISSOR_TEST);
 
             gl.scissor(x, y, width, height);
-            gl.clear_color(color[0], color[1], color[2], 0.4);
+            gl.clear_color(color[0], color[1], color[2], 1.0);
             gl.clear(glow::COLOR_BUFFER_BIT);
             gl.disable(glow::SCISSOR_TEST);
         }
