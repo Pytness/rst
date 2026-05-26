@@ -21,6 +21,19 @@ macro_rules! DEFAULT {
     };
 }
 
+macro_rules! snprintf {
+    ($buffer:expr, $format:expr, $($arg:expr),*) => {
+        unsafe {
+            libc::snprintf(
+                $buffer.as_mut_ptr() as *mut i8,
+                $buffer.len(),
+                $format.as_ptr() as *const i8,
+                $($arg),*
+            )
+        }
+    };
+}
+
 #[derive(Debug)]
 pub struct CSIEscape {
     pub buf: [u8; ESC_BUF_SIZ], // raw string
@@ -282,45 +295,23 @@ impl CSIEscape {
                         if pi == 1 && pa_is_valid {
                             // number of sixel color registers
                             // (read, reset and read the maximum value give the same response)
-                            let n = unsafe {
-                                libc::snprintf(
-                                    buffer.as_mut_ptr() as *mut i8,
-                                    buffer.len(),
-                                    b"\x1b[?1;0;%dS\0".as_ptr() as *const i8,
-                                    DECSIXEL_PALETTE_MAX
-                                )
-
-                            };
-
+                            let n = snprintf!(buffer, b"\x1b[?1;0;%dS\0", DECSIXEL_PALETTE_MAX);
                             term.ttywrite(&buffer, n as usize, true);
                         } else if pi == 2 && pa_is_valid {
                             // sixel graphics geometry (in pixels)
                             // (read, reset and read the maximum value give the same response)
 
-                            let n = unsafe {
-                                libc::snprintf(
-                                    buffer.as_mut_ptr() as *mut i8,
-                                    buffer.len(),
-                                    b"\x1b[?2;0;%d;%dS\0".as_ptr() as *const i8,
+                            let n = snprintf!(buffer, b"\x1b[?2;0;%d;%dS\0",
                                     (term.col * win.cw as usize).min(DECSIXEL_WIDTH_MAX),
                                     (term.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX)
-                                )
-
-                            };
+                                );
 
                             term.ttywrite(&buffer, n as usize, true);
                         } else {
                             // the number of color registers and sixel geometry can't be changed
                             // failure
-                            let n = unsafe {
-                                libc::snprintf(
-                                    buffer.as_mut_ptr() as *mut i8,
-                                    buffer.len(),
-                                    b"\x1b[?%d;3;0S\0".as_ptr() as *const i8,
-                                    pi
-                                )
+                            let n = snprintf!(buffer, b"\x1b[?%d;3;0S\0", pi);
 
-                            };
                             term.ttywrite(&buffer, n as usize, true);
                             unknown();
                         }
@@ -401,15 +392,7 @@ impl CSIEscape {
                     // Report Cursor Position (CPR) "<row>;<column>R"
                     6 => {
                         let mut buffer = [0u8; 40];
-                        let len = unsafe {
-                            libc::snprintf(
-                                buffer.as_mut_ptr() as *mut i8,
-                                buffer.len(),
-                                b"\x1b[%i;%iR".as_ptr() as *const i8,
-                                term.c.y + 1,
-                                term.c.x + 1
-                            )
-                        };
+                        let len = snprintf!(buffer, b"\x1b[%i;%iR\0", term.c.y + 1, term.c.x + 1);
                         term.ttywrite(&buffer, len as usize, true);
                     }
                     _ => unknown(),
