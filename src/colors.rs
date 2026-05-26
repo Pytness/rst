@@ -24,7 +24,7 @@ pub const COLORS: [u32; 512] = {
     arr[256] = 0xcccccc;
     arr[257] = 0x555555;
     arr[258] = 0xe5e5e5;
-    arr[259] = 0xF00000;
+    arr[259] = 0x000000;
 
     arr
 };
