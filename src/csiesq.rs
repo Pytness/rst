@@ -131,7 +131,7 @@ impl CSIEscape {
             // CUU -- Cursor <n> Up
             b'A' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(term.c.x, term.c.y - self.arg[0] as usize);
+                term.tmoveto(term.c.x, term.c.y.saturating_sub(self.arg[0] as usize));
             }
 
             b'B' | // CUD -- Cursor <n> Down

@@ -412,7 +412,7 @@ impl Term {
         self.tclearregion(0, orig, self.col - 1, orig + n - 1);
         self.tsetdirt(orig + n, self.bot);
 
-        for i in orig..(self.bot - n) {
+        for i in orig..(self.bot.saturating_sub(n)) {
             // let temp = self.line[i].to_owned();
             // self.line[i] = self.line[i + n];
             // self.line[i + n] = temp;
@@ -704,11 +704,17 @@ impl Term {
         self.dirty.resize(row, true);
         self.tabs.resize(col, 0);
 
+        fn resize_boxed_sliced(line: &mut Line, new_len: usize) {
+            let mut vec = line.to_owned().to_vec();
+            vec.resize(new_len, Glyph::default());
+            *line = vec.into_boxed_slice();
+        }
+
         // resize each row to new width, zero-pad if needed
-        // for y in 0..minrow {
-        //     self.line[y].resize(col, Glyph::default());
-        //     self.alt[y].resize(col, Glyph::default());
-        // }
+        for y in 0..minrow {
+            resize_boxed_sliced(&mut self.line[y], col);
+            resize_boxed_sliced(&mut self.alt[y], col);
+        }
 
         // allocate any new rows
         for y in minrow..row {
@@ -1804,12 +1810,6 @@ impl Term {
                 let b = &raw mut BUF as *mut libc::c_void;
                 libc::read(cmdfd, b.add(BUF_WRITTEN), BUF_SIZE - BUF_WRITTEN)
             };
-            println!("ttyread after read");
-
-            println!(
-                "read: {:?}",
-                &BUF[BUF_WRITTEN..(BUF_WRITTEN + ret as usize)]
-            );
 
             match ret {
                 0 => {

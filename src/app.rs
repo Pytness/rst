@@ -191,7 +191,7 @@ impl<'a> App<'a> {
         }
 
         self.gl_resize(size);
-        // TODO: self.cresize(size.width, size.height);
+        self.cresize(size.width, size.height);
 
         self.term
             .ttyresize(size.width as usize, size.height as usize);
@@ -253,7 +253,7 @@ impl<'a> App<'a> {
         let mut row = (self.win.h - 2 * borderpx) / self.win.ch;
 
         col = col.max(2);
-        row = row.min(1);
+        row = row.max(1);
 
         self.win.hborderpx =
             ((self.win.w - col * self.win.cw) as f64 * super::config::HALIGN) as u32;
@@ -505,6 +505,10 @@ impl<'a> ApplicationHandler for App<'a> {
                 (width, height),
             )
         });
+
+        let font_size = self.text_renderer.as_ref().unwrap().font_size();
+        self.win.cw = font_size.width as u32;
+        self.win.ch = font_size.height as u32;
 
         self.quad_renderer.get_or_insert_with(|| unsafe {
             renderers::QuadRenderer::new(
