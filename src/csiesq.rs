@@ -1,7 +1,7 @@
 use std::ptr::null_mut;
 
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
-use crate::terminal::{Term, TermMode, vtiden};
+use crate::terminal::{CursorMovement, CursorState, Term, TermMode, vtiden};
 use crate::win::TermWindow;
 
 pub const UTF_INVALID: usize = 0xFFFD;
@@ -389,6 +389,102 @@ impl CSIEscape {
             b'm' => {
                 term.tsetattr(&self.arg, self.narg);
             }
+
+            // DSR -- Device Status Report
+            b'n' => {
+                match self.arg[0] {
+                    // Status Report "OK" `0n`
+                    5 => {
+                        const TEXT: &[u8] = b"\x1b[0n";
+                        term.ttywrite(TEXT, TEXT.len(), false);
+                    },
+                    // Report Cursor Position (CPR) "<row>;<column>R"
+                    6 => {
+                        let mut buffer = [0u8; 40];
+                        let len = unsafe {
+                            libc::snprintf(
+                                buffer.as_mut_ptr() as *mut i8,
+                                buffer.len(),
+                                b"\x1b[%i;%iR".as_ptr() as *const i8,
+                                term.c.y + 1,
+                                term.c.x + 1
+                            )
+                        };
+                        term.ttywrite(&buffer, len as usize, true);
+                    }
+                    _ => unknown(),
+
+                }
+            }
+
+            // DECSTBM -- Set scrolling region
+            b'r' => {
+                if self.private {
+                    unknown();
+                } else {
+                    DEFAULT!(self.arg[0], 1);
+                    DEFAULT!(self.arg[1], term.row as i32);
+                    term.tsetscroll(self.arg[0] as usize - 1, self.arg[1] as usize - 1);
+                    term.tmoveato(0, 0);
+                }
+            }
+
+            // DECSC -- Save Cursor Position (ANIS.SYS)
+            b's' => {
+                term.tcursor(CursorMovement::CURSOR_SAVE);
+            }
+
+            // DECRC -- Restore cursor position (ANIS.SYS)
+            b'u' => {
+                if self.private {
+                    unknown();
+                } else {
+                    term.tcursor(CursorMovement::CURSOR_LOAD);
+                }
+            }
+
+            b' ' => {
+                match self.mode[1] {
+                    // DECSCUSR -- Set Cursor Style
+                    b'q' => {
+                        // TODO: implement this
+                        // let r = xsetcursor(self.arg[0]);
+                        // if r != 0 {
+                        //     unknown();
+                        // }
+                    }
+                    _ => unknown(),
+                }
+            }
+
+            b'>' => {
+                match self.mode[1] {
+                    // XTVERSION -- Print terminal name and version
+                    b'q' => {
+                        // TODO: implement better version reporting
+                        const TEXT: &[u8] = b"\x1bP>|rst(0.1)\x1b\\";
+                        term.ttywrite(TEXT, TEXT.len(), false);
+                    }
+                    _ => unknown(),
+                }
+            }
+
+            // XTWINOPS -- Window manipulation
+            b't' => {
+                match self.arg[0] {
+                    _ => unknown(),
+                }
+            }
+
+
+
+
+
+
+
+
+
+
 
 
 

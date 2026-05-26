@@ -91,7 +91,7 @@ bitflags! {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum CursorMovement {
+pub enum CursorMovement {
     CURSOR_SAVE,
     CURSOR_LOAD,
 }
