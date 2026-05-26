@@ -1,7 +1,7 @@
 use std::ptr::null_mut;
 
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
-use crate::terminal::{CursorMovement, CursorState, Term, TermMode, vtiden};
+use crate::terminal::{CursorMovement, Term, TermMode, vtiden};
 use crate::win::TermWindow;
 
 pub const UTF_INVALID: usize = 0xFFFD;
