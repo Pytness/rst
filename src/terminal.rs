@@ -72,7 +72,7 @@ const IMAGE_PLACEHOLDER_CHAR_OLD: char = '\u{EEEE}';
 
 // TODO: handle globals properly
 static mut su: usize = 0;
-static mut twrite_aborted: bool = false;
+pub static mut twrite_aborted: bool = false;
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]

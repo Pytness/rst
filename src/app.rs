@@ -13,7 +13,7 @@ use glutin_winit::{DisplayBuilder, GlWindow};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
-use winit::event_loop::ActiveEventLoop;
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
@@ -24,7 +24,7 @@ use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::macros::macs::include_font;
 use crate::renderers::{self, TextRenderer};
-use crate::terminal::{IS_TRUECOL, Term, TermMode};
+use crate::terminal::{IS_TRUECOL, Term, TermMode, twrite_aborted};
 use crate::text_manager::TermGlyph;
 use crate::win::{TermWindow, WinMode};
 
@@ -178,10 +178,6 @@ impl<'a> App<'a> {
         }
 
         self.term.ttywrite(&buffer, len, true);
-
-        if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
-            window.request_redraw();
-        }
     }
     pub fn cmessage(&mut self) {}
 
@@ -521,13 +517,60 @@ impl<'a> ApplicationHandler for App<'a> {
         self.app_state = Some(AppState { gl_surface, window });
     }
 
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
+        const minlatency: u64 = 2;
+        const maxlatency: u64 = 33;
+
+        let timeout: f64 = maxlatency as f64 / 1000.0;
+        unsafe {
+            // TODO: implement missing timeout handling
+            let tv: libc::timespec = libc::timespec {
+                tv_sec: timeout as libc::time_t,
+                tv_nsec: ((timeout - timeout.floor()) * 1e9) as libc::c_long,
+            };
+
+            libc::FD_ZERO(&mut self.rfd);
+            libc::FD_SET(self.ttyfd, &mut self.rfd);
+
+            if libc::pselect(
+                self.ttyfd + 1,
+                &mut self.rfd,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &tv,
+                std::ptr::null(),
+            ) < 0
+            {
+                if *libc::__errno_location() != libc::EINTR {
+                    panic!("pselect failed: {}", std::io::Error::last_os_error());
+                }
+            }
+
+            let ttyin = libc::FD_ISSET(self.ttyfd, &mut self.rfd);
+
+            if ttyin || unsafe { twrite_aborted } {
+                self.term.ttyread();
+            }
+
+            // set winit event loop to rerun in 10ms
+            let timeout = std::time::Duration::from_millis(maxlatency as u64);
+            let control = ControlFlow::WaitUntil(std::time::Instant::now() + timeout);
+            event_loop.set_control_flow(control);
+        }
+
+        self.draw();
+        if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
+            window.request_redraw();
+        }
+    }
+
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
         _id: WindowId,
         event: winit::event::WindowEvent,
     ) {
-        let timeout: f64 = 0.0;
+        println!("~~~~~~~~~~~~~~!@#!@#!@#Received window event");
 
         match event {
             WindowEvent::KeyboardInput {
@@ -559,44 +602,9 @@ impl<'a> ApplicationHandler for App<'a> {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
+
             _ => (),
         }
-
-        unsafe {
-            // TODO: implement missing timeout handling
-            let tv: libc::timespec = libc::timespec {
-                tv_sec: timeout as libc::time_t,
-                tv_nsec: ((timeout - timeout.floor()) * 1e9) as libc::c_long,
-            };
-
-            libc::FD_ZERO(&mut self.rfd);
-            libc::FD_SET(self.ttyfd, &mut self.rfd);
-
-            if libc::pselect(
-                self.ttyfd + 1,
-                &mut self.rfd,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                &tv,
-                std::ptr::null(),
-            ) < 0
-            {
-                if *libc::__errno_location() != libc::EINTR {
-                    panic!("pselect failed: {}", std::io::Error::last_os_error());
-                }
-            }
-
-            let ttyin = libc::FD_ISSET(self.ttyfd, &mut self.rfd); // || ttyread_pending();
-
-            if ttyin {
-                self.term.ttyread();
-            }
-        }
-
-        self.draw();
-        // if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
-        //     window.request_redraw();
-        // }
     }
 }
 
