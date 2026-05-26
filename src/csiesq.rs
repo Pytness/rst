@@ -454,23 +454,54 @@ impl CSIEscape {
 
             // XTWINOPS -- Window manipulation
             b't' => {
+                let mut buffer = [0u8; 40];
                 match self.arg[0] {
+                    // Report text area size in pixels
+                    14 => {
+                        let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", term.pixh, term.pixw);
+                        term.ttywrite(&buffer, len as usize, false);
+                    }
+
+                    // Report character cell sie in pixels
+                    16 => {
+			let len = snprintf!(buffer, "\033[6;%i;%it", term.pixh / term.row, term.pixw / term.col);
+                        term.ttywrite(&buffer, len as usize, false);
+                    }
+
+                    // Report the size of the text area in characters
+                    18 => {
+                        let len = snprintf!(buffer, "\033[8;%i;%it", term.row, term.col);
+                        term.ttywrite(&buffer, len as usize, false);
+                    }
+
                     _ => unknown(),
                 }
             }
 
+            // DSR-EXT -- Device Status Report (Extended)
+            b'$' => {
+                match self.mode[1] {
+                    b'p' => {
+                        let feature_mode = match self.arg[0] {
+                            // Synchronized updates
+                            2026 => {
+                                // Supported and screen updates are shown as usual
+                                // (e.g. as soon as they arrive)
+                                2
+                            }
+                            _ => {
+                                eprintln!("erresc: unknown DSR-EXT {}", self.arg[0]);
+                                0
+                            }
+                        };
 
-
-
-
-
-
-
-
-
-
-
-
+                        let mut buffer = [0u8; 40];
+                        let len = snprintf!(buffer, "\033[?%d;%d$y", self.arg[0], feature_mode);
+                        term.ttywrite(&buffer, len as usize, false);
+                    }
+                    _ => unknown(),
+                }
+            }
 
             _ => unknown(),
         }
