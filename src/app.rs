@@ -426,7 +426,7 @@ impl<'a> App<'a> {
                 self.text_renderer
                     .as_mut()
                     .unwrap()
-                    .draw_glyphs(&glyphs, x1, y1 as i32, &proj);
+                    .draw_glyphs(&glyphs, y1 as i32, x1 as i32, &proj);
             });
         }
     }
