@@ -64,7 +64,7 @@ static mut iofd: i32 = 0;
 static mut cmdfd: i32 = 0;
 static mut pid: i32 = 0;
 // TODO: move this to config
-pub static vtiden: &[u8] = b"";
+pub static vtiden: &[u8] = b"\x1b[?62;4c";
 
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
