@@ -532,4 +532,8 @@ impl CSIEscape {
 
         eprint!("\n");
     }
+
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
 }
