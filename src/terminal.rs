@@ -1274,7 +1274,7 @@ impl Term {
                 return;
             }
 
-            self.tcontrolcode(u);
+            self.tcontrolcode(u as u8);
 
             if self.esc.is_empty() {
                 self.lastc = '\0';
@@ -1427,58 +1427,164 @@ impl Term {
         }
     }
 
-    fn tcontrolcode(&mut self, u: char) {
+    fn tcontrolcode(&mut self, u: u8) {
+        let mut interrupt_sequence = false;
+
         match u {
-            '\t' => self.tputtab(1),
-            '\x08' => {
+            // HT
+            b'\t' => self.tputtab(1),
+
+            // BS (\b)
+            0x08 => {
                 // BS
                 let x = self.c.x;
                 let y = self.c.y;
                 self.tmoveto(x.saturating_sub(1), y);
             }
-            '\r' => {
-                let y = self.c.y;
-                self.tmoveto(0, y);
+
+            // CR
+            b'\r' => {
+                self.tmoveto(0, self.c.y);
             }
-            '\x0C' | '\x0B' | '\n' => {
-                // FF, VT, LF
+
+            0x0C  | // LF (\f)
+            0x0B  | // VT (\v)
+            b'\n'   // LF (\n)
+            => {
                 self.tnewline(self.mode.contains(TermMode::MODE_CRLF));
             }
-            '\x0F' => {
-                // SI – switch to charset 0
-                self.charset = 0;
+
+            // BEL (\a)
+            0x07 => {
+                if self.esc.contains(EscapeState::ESC_STR_END) {
+                    // backwards compatibility to xterm
+                    // TODO: implemet streescseq handling
+                    // strescseq.term = STR_TERM_BEL;
+                    // strhandle();
+                } else {
+                    // TODO: implement ring bell
+                    // xbell();
+                }
+
+                interrupt_sequence = true;
             }
-            '\x0E' => {
-                // SO – switch to charset 1
+
+            // ESC
+            0x1B => {
+                self.csireset();
+                self.esc.remove(EscapeState::ESC_CSI | EscapeState::ESC_ALTCHARSET | EscapeState::ESC_TEST);
+                self.esc.insert(EscapeState::ESC_START);
+            }
+
+            // SO (LS1 -- Locking shift 1)
+            0x0e => {
                 self.charset = 1;
             }
-            '\x07' => {
-                // BEL
-                // TODO: ring bell
+            // SI (LS0 -- Locking shift 0)
+            0x0f => {
+                self.charset = 0;
             }
-            '\x1B' => {
-                // ESC
-                self.csiescseq = CSIEscape::default();
-                self.esc &=
-                    !(EscapeState::ESC_CSI | EscapeState::ESC_ALTCHARSET | EscapeState::ESC_TEST);
-                self.esc |= EscapeState::ESC_START;
+
+            // SUB
+            0x1A => {
+                let g = self.c.attr.clone();
+                self.tsetchar('?', &g, self.c.x, self.c.y);
+                self.csireset();
+                interrupt_sequence = true;
             }
-            '\u{0018}' | '\u{001A}' => {
-                // CAN / SUB
-                self.esc = EscapeState::empty();
-                // TODO: tputc('\u{FFFD}')  (replacement character)
+
+            // CAN
+            0x18 => {
+                self.csireset();
+                interrupt_sequence = true;
             }
-            '\u{0080}'..='\u{009F}' => {
-                // C1 control: treat as ESC + (c - 0x40)
-                let mapped = char::from_u32(u as u32 - 0x40).unwrap_or(u);
-                self.tcontrolcode('\x1B');
-                if !ISCONTROLC1(mapped) {
-                    self.tcontrolcode(mapped);
-                }
+
+            // TODO: check IGNORED
+            // case '\005': /* ENQ (IGNORED) */
+            // case '\000': /* NUL (IGNORED) */
+            // case '\021': /* XON (IGNORED) */
+            // case '\023': /* XOFF (IGNORED) */
+            // case 0177:   /* DEL (IGNORED) */
+            //         return;
+
+
+            0x80 | // TODO: PAD
+            0x81 | // TODO: HOP
+            0x82 | // TODO: BPH
+            0x83 | // TODO: NBH
+            0x84   // TODO: IND
+            => {
+                interrupt_sequence = true;
             }
+
+            // NEL -- Next line
+            0x85 => {
+                self.tnewline(true);
+                interrupt_sequence = true;
+            },
+
+            0x86 | // TODO:  SSA
+            0x87   // TODO:  ESA
+            => {
+                interrupt_sequence = true;
+            }
+
+            // HTS -- Horizontal tab stop
+            0x88 => {
+                self.tabs[self.c.x] = 1;
+                interrupt_sequence = true;
+            }
+
+            0x89 | // TODO: HTJ
+            0x8a | // TODO: VTS
+            0x8b | // TODO: PLD
+            0x8c | // TODO: PLU
+            0x8d | // TODO: RI
+            0x8e | // TODO: SS2
+            0x8f | // TODO: SS3
+            0x91 | // TODO: PU1
+            0x92 | // TODO: PU2
+            0x93 | // TODO: STS
+            0x94 | // TODO: CCH
+            0x95 | // TODO: MW
+            0x96 | // TODO: SPA
+            0x97 | // TODO: EPA
+            0x98 | // TODO: SOS
+            0x99   // TODO: SGCI
+            => {
+                interrupt_sequence = true;
+            }
+
+            // DECID -- Identify Terminal
+            0x9a => {
+                self.ttywrite(vtiden, vtiden.len(), false);
+                interrupt_sequence = true;
+            }
+
+            0x9b | // TODO: CSI
+            0x9c   // TODO: ST
+            => {
+                interrupt_sequence = true;
+            }
+
+
+            0x90 | // DCS -- Device Control String
+            0x9d | // OSC -- Operating System Command
+            0x9e | // PM -- Privacy Message
+            0x9f   // APC -- Application Program Command
+            => {
+                self.tstrsequence(u);
+            }
+
             _ => {
                 // ignore other control codes
             }
+        }
+
+        // only CAN, SUB, \a and C1 chars interrupt a sequence
+        if interrupt_sequence {
+            self.esc
+                .remove(EscapeState::ESC_STR_END | EscapeState::ESC_STR);
         }
     }
 
@@ -1569,7 +1675,7 @@ impl Term {
                     self.esc.insert(EscapeState::ESC_DCS);
                 }
 
-                self.tstrsequence(u);
+                self.tstrsequence(u as u8);
                 return false;
             }
             'n' | // LS2 -- Locking shift 2
@@ -1663,6 +1769,10 @@ impl Term {
         self.csiescseq.handle(term_ptr, win_ptr);
     }
 
+    fn csireset(&mut self) {
+        self.csiescseq.reset();
+    }
+
     fn dcshandle(&mut self) {
         dcshandle();
     }
@@ -1753,28 +1863,28 @@ impl Term {
         }
     }
 
-    fn tstrsequence(&mut self, c: char) {
+    fn tstrsequence(&mut self, c: u8) {
         let mut c = c;
         self.strreset();
 
         match c as u8 {
             0x90 => {
-                c = 'P';
+                c = b'P';
                 self.esc.insert(EscapeState::ESC_DCS);
             }
             0x9f => {
-                c = '_';
+                c = b'_';
             }
             0x9e => {
-                c = '^';
+                c = b'^';
             }
             0x9d => {
-                c = ']';
+                c = b']';
             }
             _ => {}
         }
 
-        self.strescseq.type_ = c as u8;
+        self.strescseq.type_ = c;
         self.esc.insert(EscapeState::ESC_STR);
     }
 
