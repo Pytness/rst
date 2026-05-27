@@ -1,6 +1,7 @@
 use std::ptr::{null, null_mut};
 
 use crate::boxdraw::boxdraw::isboxdraw;
+use crate::config::VTIDEN;
 use crate::csiesq::{CSIEscape, STR_TERM_ST};
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::win::{TermWindow, WinMode};
@@ -63,8 +64,6 @@ fn ISCONTROL(c: char) -> bool {
 static mut iofd: i32 = 0;
 static mut cmdfd: i32 = 0;
 static mut pid: i32 = 0;
-// TODO: move this to config
-pub static vtiden: &[u8] = b"\x1b[?62;4c";
 
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
@@ -1563,7 +1562,7 @@ impl Term {
 
             // DECID -- Identify Terminal
             0x9a => {
-                self.ttywrite(vtiden, vtiden.len(), false);
+                self.ttywrite(VTIDEN, VTIDEN.len(), false);
                 interrupt_sequence = true;
             }
 
@@ -1723,7 +1722,7 @@ impl Term {
             }
             // DECID -- Identify Terminal
             'Z' => {
-                self.ttywrite(vtiden, vtiden.len(), false);
+                self.ttywrite(VTIDEN, VTIDEN.len(), false);
             }
             // RIS -- Reset to initial state
             'c' => {

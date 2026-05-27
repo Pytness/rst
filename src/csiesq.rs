@@ -1,7 +1,9 @@
 use std::ptr::null_mut;
 
+use crate::config::VTIDEN;
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
-use crate::terminal::{CursorMovement, Term, TermMode, vtiden};
+use crate::terminal::{CursorMovement, Term, TermMode};
+
 use crate::win::TermWindow;
 
 pub const UTF_INVALID: usize = 0xFFFD;
@@ -156,7 +158,7 @@ impl CSIEscape {
             // dA -- Device Attributes
             b'c' => {
                 if self.arg[0] == 0 {
-                    term.ttywrite(vtiden, vtiden.len(), false);
+                    term.ttywrite(VTIDEN, VTIDEN.len(), false);
                 }
             }
 

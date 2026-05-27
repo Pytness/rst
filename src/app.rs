@@ -19,6 +19,7 @@ use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
 use crate::colors::COLORS;
+use crate::config::maxlatency;
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
@@ -518,9 +519,6 @@ impl<'a> ApplicationHandler for App<'a> {
     }
 
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
-        const minlatency: u64 = 2;
-        const maxlatency: u64 = 33;
-
         let timeout: f64 = maxlatency as f64 / 1000.0;
         unsafe {
             // TODO: implement missing timeout handling
