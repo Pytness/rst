@@ -105,7 +105,7 @@ impl SixelImage {
         let mut i = 1;
 
         // palette initialization
-        for n in 1..17 {
+        for _ in 1..17 {
             self.palette[i] = SIXEL_DEFAULT_COLOR_TABLE[i - 1];
             i += 1;
         }
@@ -131,7 +131,7 @@ impl SixelImage {
         }
     }
 
-    pub fn resize_buffer(&mut self, width: usize, height: usize) {}
+    pub fn resize_buffer(&mut self, _width: usize, _height: usize) {}
 }
 
 pub enum ParseState {
@@ -257,4 +257,4 @@ pub fn scroll_images(n: usize) {
     });
 }
 
-pub fn image_buffer_resize(image: &mut SixelImage, width: usize, height: usize) {}
+pub fn image_buffer_resize(_image: &mut SixelImage, _width: usize, _height: usize) {}

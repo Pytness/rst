@@ -61,16 +61,16 @@ fn ISCONTROL(c: char) -> bool {
     ISCONTROLC0(c) || ISCONTROLC1(c)
 }
 
-static mut iofd: i32 = 0;
-static mut cmdfd: i32 = 0;
-static mut pid: i32 = 0;
+static mut IOFD: i32 = 0;
+static mut CMDFD: i32 = 0;
+static mut PID: i32 = 0;
 
 const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
 const IMAGE_PLACEHOLDER_CHAR_OLD: char = '\u{EEEE}';
 
 // TODO: handle globals properly
-static mut su: usize = 0;
+static mut SU: usize = 0;
 pub static mut twrite_aborted: bool = false;
 
 bitflags! {
@@ -682,12 +682,12 @@ impl Term {
             self.tcursor(CursorMovement::CURSOR_SAVE);
             self.tsetscroll(0, self.row - 1);
 
-            for i in 0..2 {
-                if (self.c.y >= row) {
+            for _ in 0..2 {
+                if self.c.y >= row {
                     self.tscrollup(0, self.c.y - row + 1);
                 }
 
-                for j in row..self.row {
+                for _j in row..self.row {
                     // free(self.line[j]);
                 }
 
@@ -740,7 +740,7 @@ impl Term {
 
         // clearing both screens (it makes dirty all lines)
 
-        for i in 0..2 {
+        for _ in 0..2 {
             self.tmoveto(self.c.x, self.c.y);
             self.tcursor(CursorMovement::CURSOR_SAVE);
 
@@ -755,14 +755,14 @@ impl Term {
 
         // expand images into new terxt cells
 
-        for i in 0..2 {
+        for _ in 0..2 {
             for image in &self.images {
-                if image.y < 0 || image.y >= self.row {
+                if image.y >= self.row {
                     // TODO:  delete_image(image);
                     continue;
                 }
 
-                let line = self.line[image.y].as_mut();
+                let _line = self.line[image.y].as_mut();
                 let x2 = (image.x + image.cols).min(self.col) - 1;
 
                 if mincol < col && x2 >= mincol && image.x < col {
@@ -914,7 +914,7 @@ impl Term {
         if let Some(out) = out {
             self.mode.insert(TermMode::MODE_PRINT);
             unsafe {
-                iofd = if out == "-" {
+                IOFD = if out == "-" {
                     1
                 } else {
                     libc::open(
@@ -924,7 +924,7 @@ impl Term {
                     )
                 };
 
-                if iofd < 0 {
+                if IOFD < 0 {
                     panic!("Error opening {}:{}", out, std::io::Error::last_os_error());
                 }
             }
@@ -932,9 +932,9 @@ impl Term {
 
         if let Some(line) = line {
             unsafe {
-                cmdfd = libc::open(line.as_ptr() as *const libc::c_char, libc::O_RDWR);
+                CMDFD = libc::open(line.as_ptr() as *const libc::c_char, libc::O_RDWR);
 
-                if cmdfd < 0 {
+                if CMDFD < 0 {
                     panic!(
                         "open line '{}' failed: {}",
                         line,
@@ -942,10 +942,10 @@ impl Term {
                     );
                 }
 
-                libc::dup2(cmdfd, 0);
+                libc::dup2(CMDFD, 0);
                 // TODO: stty(args);
 
-                return cmdfd;
+                return CMDFD;
             }
         }
 
@@ -959,15 +959,15 @@ impl Term {
         }
 
         unsafe {
-            pid = libc::fork();
+            PID = libc::fork();
 
-            match pid {
+            match PID {
                 -1 => {
                     panic!("fork failed: {}", std::io::Error::last_os_error());
                 }
 
                 0 => {
-                    libc::close(iofd);
+                    libc::close(IOFD);
                     libc::close(m);
                     libc::setsid();
                     libc::dup2(s, 0);
@@ -990,13 +990,13 @@ impl Term {
 
                 _ => {
                     libc::close(s);
-                    cmdfd = m;
+                    CMDFD = m;
                     libc::sigemptyset(&mut sa.sa_mask);
                     libc::sigaction(libc::SIGCHLD, &sa, null_mut());
                 }
             }
 
-            return cmdfd;
+            return CMDFD;
         }
     }
 
@@ -1012,7 +1012,7 @@ impl Term {
         };
 
         unsafe {
-            if libc::ioctl(cmdfd, libc::TIOCSWINSZ, &w) < 0 {
+            if libc::ioctl(CMDFD, libc::TIOCSWINSZ, &w) < 0 {
                 panic!(
                     "Couldn't set window size: {}",
                     std::io::Error::last_os_error()
@@ -1056,7 +1056,7 @@ impl Term {
         let mut charsize = 0;
         let mut i = 0;
         let mut u: char = '\0';
-        let su0 = unsafe { su };
+        let su0 = unsafe { SU };
 
         unsafe { twrite_aborted = false };
 
@@ -1085,7 +1085,7 @@ impl Term {
                 charsize = 1;
             }
 
-            if su0 != 0 && unsafe { su == 0 } {
+            if su0 != 0 && unsafe { SU == 0 } {
                 unsafe { twrite_aborted = true };
                 break; // ESU - allow rendering before a new BSU
             }
@@ -1135,11 +1135,11 @@ impl Term {
             unsafe {
                 libc::FD_ZERO(&mut wfd);
                 libc::FD_ZERO(&mut rfd);
-                libc::FD_SET(cmdfd, &mut wfd);
-                libc::FD_SET(cmdfd, &mut rfd);
+                libc::FD_SET(CMDFD, &mut wfd);
+                libc::FD_SET(CMDFD, &mut rfd);
 
                 if pselect(
-                    cmdfd + 1,
+                    CMDFD + 1,
                     &mut rfd,
                     &mut wfd,
                     null_mut(),
@@ -1153,14 +1153,14 @@ impl Term {
                     panic!("select failed: {}", std::io::Error::last_os_error());
                 }
 
-                if libc::FD_ISSET(cmdfd, &mut wfd) {
+                if libc::FD_ISSET(CMDFD, &mut wfd) {
                     /*
                      * Only write the bytes written by ttywrite() or the
                      * default of 256. This seems to be a reasonable value
                      * for a serial line. Bigger values might clog the I/O.
                      */
                     let count = if n < lim { n } else { lim };
-                    let r = libc::write(cmdfd, s, count);
+                    let r = libc::write(CMDFD, s, count);
 
                     println!("write returned {}, {}", r, n);
 
@@ -1188,7 +1188,7 @@ impl Term {
                     println!("select returned but cmdfd is not writable");
                 }
 
-                if libc::FD_ISSET(cmdfd, &mut rfd) {
+                if libc::FD_ISSET(CMDFD, &mut rfd) {
                     lim = self.ttyread();
                 }
             }
@@ -1227,8 +1227,6 @@ impl Term {
          * receives a ESC, a SUB, a ST or any other C1 control
          * character.
          */
-        let mut check_control_code = false;
-
         if self.esc.contains(EscapeState::ESC_STR) {
             let is_control = match u as u8 {
                 0o7 | 0o30 | 0o32 | 0o33 => true,
@@ -1424,10 +1422,10 @@ impl Term {
 
     fn tprinter(&self, s: &[u8], len: usize) {
         unsafe {
-            if iofd >= 0 && xwrite(iofd, s, len) < 0 {
+            if IOFD >= 0 && xwrite(IOFD, s, len) < 0 {
                 eprintln!("Error writing to output file");
-                libc::close(iofd);
-                iofd = -1;
+                libc::close(IOFD);
+                IOFD = -1;
             }
         }
     }
@@ -1807,7 +1805,7 @@ impl Term {
                 1
             } else {
                 let b = &raw mut BUF as *mut libc::c_void;
-                libc::read(cmdfd, b.add(BUF_WRITTEN), BUF_SIZE - BUF_WRITTEN)
+                libc::read(CMDFD, b.add(BUF_WRITTEN), BUF_SIZE - BUF_WRITTEN)
             };
 
             match ret {
@@ -1896,7 +1894,7 @@ impl Term {
     }
 
     // TODO:
-    fn xsetmode(&mut self, set: i32, mode: WinMode) {
+    fn xsetmode(&mut self, set: i32, _mode: WinMode) {
         let win = unsafe { &mut *self.win };
         let mode = win.mode;
 
@@ -1931,7 +1929,7 @@ impl Term {
         }
     }
 
-    pub fn tdumpline(&self, n: usize) {
+    pub fn tdumpline(&self, _n: usize) {
         // TODO: implement this
         // char buf[UTF_SIZ];
         // const Glyph *bp, *end;
@@ -1962,7 +1960,7 @@ impl Term {
         // }
     }
 
-    pub fn tsetmode(&self, private: bool, set: i32, args: &[i32], narg: usize) {}
+    pub fn tsetmode(&self, _private: bool, _set: i32, _args: &[i32], _narg: usize) {}
 
     pub fn tdeleteline(&mut self, n: usize) {
         if BETWEEN!(self.c.y, self.top, self.bot) {
@@ -1985,8 +1983,6 @@ impl Term {
     }
 
     pub fn tsetattr(&mut self, attr: &[i32], l: usize) {
-        let mut index = 0;
-
         let mut i = 0;
         while i < l {
             let a = attr[i] as u32;
@@ -2301,8 +2297,7 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
         setenv!("TERM", "xterm-256color".as_ptr() as *const libc::c_char);
 
         println!("Exec: {:?} with args: {:?}", sh, args);
-        let r = libc::execvp(sh, args.as_ptr());
-        println!("execvp failed: {}", std::io::Error::last_os_error());
+        libc::execvp(sh, args.as_ptr());
         libc::_exit(1);
     }
 }
@@ -2385,11 +2380,11 @@ fn tgetimgplacementid(g: &Glyph) -> u32 {
     g.decoration as u32 & 0xFFFFFF
 }
 
-fn tgetdecorcolor(g: &Glyph) -> u32 {
+fn tgetdecorcolor(_g: &Glyph) -> u32 {
     todo!()
 }
 
-fn tsetimgplacementid(g: &Glyph, placement_id: usize) {
+fn tsetimgplacementid(_g: &Glyph, _placement_id: usize) {
     todo!()
 }
 
@@ -2490,10 +2485,10 @@ fn diacritic_to_num(u: char) -> u32 {
 }
 
 fn gr_get_glyph_underneath_image(
-    image_id: u32,
-    placement_id: u32,
-    col: u32,
-    row: u32,
+    _image_id: u32,
+    _placement_id: u32,
+    _col: u32,
+    _row: u32,
 ) -> Option<&'static Glyph> {
     todo!()
 }

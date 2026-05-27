@@ -52,16 +52,16 @@ pub fn boxdrawindex(u: char) -> u32 {
 
 pub fn drawboxes(
     x: usize,
-    y: usize,
-    cw: usize,
-    ch: usize,
-    fgcolor: u32,
-    bgcolor: u32,
-    specs: (),
+    _y: usize,
+    _cw: usize,
+    _ch: usize,
+    _fgcolor: u32,
+    _bgcolor: u32,
+    _specs: (),
     len: usize,
 ) {
-    let mut x = x;
-    for i in 0..len {
+    let _x = x;
+    for _i in 0..len {
         // TODO: advance specs (FontSpec *specs, specs++)
 
         // TODO:  drawbox(x, y, cw, ch, fg, bg, (ushort)specs->glyph);
@@ -81,7 +81,7 @@ fn drawbox(x: usize, y: usize, w: usize, h: usize, fg: XftColor, bg: XftColor, g
         drawboxlines(x as i32, y as i32, w as i32, h as i32, &fg, bd);
     } else if cat == BBD {
         /* lower (8-X)/8 block */
-        let d = (bd * h) / 8;
+        let _d = (bd * h) / 8;
         // XftDrawRect(xd, fg, x, y + d, w, h - d);
     } else if cat == BBU {
         /* upper X/8 block */
@@ -91,12 +91,12 @@ fn drawbox(x: usize, y: usize, w: usize, h: usize, fg: XftColor, bg: XftColor, g
         // XftDrawRect(xd, fg, x, y, (bd * w)/ 8, h);
     } else if cat == BBR {
         /* right (8-X)/8 block */
-        let d = (bd * w) / 8;
+        let _d = (bd * w) / 8;
         // XftDrawRect(xd, fg, x + d, y, w - d, h);
     } else if cat == BBQ {
         /* Quadrants */
-        let w2 = w / 2;
-        let h2 = h / 2;
+        let _w2 = w / 2;
+        let _h2 = h / 2;
         if (bd & TL) != 0 {
             // XftDrawRect(xd, fg, x, y, w2, h2);
         }
@@ -129,10 +129,10 @@ fn drawbox(x: usize, y: usize, w: usize, h: usize, fg: XftColor, bg: XftColor, g
         // XftColorFree(xdpy, xvis, xcmap, &xfc);
     } else if cat == BRL {
         /* braille, each data bit corresponds to one dot at 2x4 grid */
-        let w1 = (w) / 2;
-        let h1 = (h) / 4;
-        let h2 = (h) / 2;
-        let h3 = (3 * h) / 4;
+        let _w1 = (w) / 2;
+        let _h1 = (h) / 4;
+        let _h2 = (h) / 2;
+        let _h3 = (3 * h) / 4;
 
         if bd & BrailleDots::BRAILLE_TOP_LEFT as u32 != 0 {
             // XftDrawRect(xd, fg, x, y, w1, h1);
@@ -168,7 +168,7 @@ fn div_round(n: i32, d: i32) -> i32 {
 }
 
 // TODO: move this to an opengl shader
-fn drawboxlines(x: i32, y: i32, w: i32, h: i32, fg: &XftColor, bd: u32) {
+fn drawboxlines(_x: i32, _y: i32, w: i32, h: i32, _fg: &XftColor, bd: u32) {
     /* s: stem thickness. width/8 roughly matches underscore thickness. */
     /* We draw bold as 1.5 * normal-stem and at least 1px thicker.      */
     /* doubles draw at least 3px, even when w or h < 3. bold needs 6px. */
@@ -180,8 +180,8 @@ fn drawboxlines(x: i32, y: i32, w: i32, h: i32, fg: &XftColor, bd: u32) {
     } else {
         base_s
     };
-    let w2 = div_round(w - s, 2);
-    let h2 = div_round(h - s, 2);
+    let _w2 = div_round(w - s, 2);
+    let _h2 = div_round(h - s, 2);
     /* the s-by-s square (x + w2, y + h2, s, s) is the center texel.   */
     /* The base length (per direction till edge) includes this square.  */
 
@@ -195,7 +195,7 @@ fn drawboxlines(x: i32, y: i32, w: i32, h: i32, fg: &XftColor, bd: u32) {
         let multi_light = light & (light - 1);
         let multi_double = double_ & (double_ - 1);
         /* light crosses double only at DH+LV, DV+LH (ref. shapes)     */
-        let d: i32 = if arc || (multi_double != 0 && multi_light == 0) {
+        let _d: i32 = if arc || (multi_double != 0 && multi_light == 0) {
             -s
         } else {
             0
@@ -230,8 +230,8 @@ fn drawboxlines(x: i32, y: i32, w: i32, h: i32, fg: &XftColor, bd: u32) {
         let dd = bd & DD;
 
         if dl != 0 {
-            let p: i32 = if dd != 0 { -s } else { 0 };
-            let n: i32 = if du != 0 {
+            let _p: i32 = if dd != 0 { -s } else { 0 };
+            let _n: i32 = if du != 0 {
                 -s
             } else if dd != 0 {
                 s
@@ -242,8 +242,8 @@ fn drawboxlines(x: i32, y: i32, w: i32, h: i32, fg: &XftColor, bd: u32) {
             // XftDrawRect(xd, fg, x, y + h2 - s, w2 + s + n, s);
         }
         if du != 0 {
-            let p: i32 = if dl != 0 { -s } else { 0 };
-            let n: i32 = if dr != 0 {
+            let _p: i32 = if dl != 0 { -s } else { 0 };
+            let _n: i32 = if dr != 0 {
                 -s
             } else if dl != 0 {
                 s
@@ -254,8 +254,8 @@ fn drawboxlines(x: i32, y: i32, w: i32, h: i32, fg: &XftColor, bd: u32) {
             // XftDrawRect(xd, fg, x + w2 + s, y, s, h2 + s + n);
         }
         if dr != 0 {
-            let p: i32 = if du != 0 { -s } else { 0 };
-            let n: i32 = if dd != 0 {
+            let _p: i32 = if du != 0 { -s } else { 0 };
+            let _n: i32 = if dd != 0 {
                 -s
             } else if du != 0 {
                 s
@@ -266,8 +266,8 @@ fn drawboxlines(x: i32, y: i32, w: i32, h: i32, fg: &XftColor, bd: u32) {
             // XftDrawRect(xd, fg, x + w2 - n, y + h2 + s, w - w2 + n, s);
         }
         if dd != 0 {
-            let p: i32 = if dr != 0 { -s } else { 0 };
-            let n: i32 = if dl != 0 {
+            let _p: i32 = if dr != 0 { -s } else { 0 };
+            let _n: i32 = if dl != 0 {
                 -s
             } else if dr != 0 {
                 s

@@ -80,15 +80,15 @@ fn tgetimgplacementid(g: &Glyph) -> u32 {
     g.decoration as u32 & 0xFFFFFF
 }
 
-fn tsetimgplacementid(g: &Glyph, placement_id: usize) {
+fn tsetimgplacementid(_g: &Glyph, _placement_id: usize) {
     todo!()
 }
 
 fn gr_get_glyph_underneath_image(
-    image_id: u32,
-    placement_id: u32,
-    col: u32,
-    row: u32,
+    _image_id: u32,
+    _placement_id: u32,
+    _col: u32,
+    _row: u32,
 ) -> Option<&'static Glyph> {
     todo!()
 }

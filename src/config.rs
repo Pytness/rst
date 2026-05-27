@@ -22,7 +22,7 @@ pub const HALIGN: f64 = 0.5;
 pub const VALIGN: f64 = 0.5;
 pub const VTIDEN: &[u8] = b"\x1b[?62;4c";
 
-pub const minlatency: u64 = 2;
+pub const MINLATENCY: u64 = 2;
 pub const maxlatency: u64 = 33;
 
 /*
@@ -49,10 +49,10 @@ pub const maxlatency: u64 = 33;
 //         {TERMMOD, XK_F7, unloadimages, {.i = 0}},     {TERMMOD, XK_F8, toggleimages, {.i = 0}},
 // };
 
-pub const mshortcuts: Vec<MouseShortcut> = vec![];
+pub const MSHORTCUTS: Vec<MouseShortcut> = vec![];
 pub const shortcuts: Vec<Shortcut> = vec![];
 
 pub const defaultfg: u32 = 258;
 pub const defaultbg: u32 = 259;
-pub const defaultcs: u32 = 256;
-pub const defaultrcs: u32 = 257;
+pub const DEFAULTCS: u32 = 256;
+pub const DEFAULTRCS: u32 = 257;

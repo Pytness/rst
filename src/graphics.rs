@@ -45,7 +45,7 @@ enum ImageStatus {
     STATUS_RAM_LOADING_SUCCESS = 6,
 }
 
-const image_status_strings: [&str; 6] = [
+const IMAGE_STATUS_STRINGS: [&str; 6] = [
     "STATUS_UNINITIALIZED",
     "STATUS_UPLOADING",
     "STATUS_UPLOADING_ERROR",
@@ -62,7 +62,7 @@ enum ImageUploadingFailure {
     ERROR_CANNOT_OPEN_SHM = 5,
 }
 
-const image_uploading_failure_strings: [&str; 6] = [
+const IMAGE_UPLOADING_FAILURE_STRINGS: [&str; 6] = [
     "NO_ERROR",
     "ERROR_OVER_SIZE_LIMIT",
     "ERROR_CANNOT_OPEN_CACHED_FILE",
@@ -285,7 +285,7 @@ struct ImageRect {
 ///     });
 ///
 
-pub fn foreach_frame(image: &Image, mut code: impl FnMut(&ImageFrame)) {
+pub fn foreach_frame(_image: &Image, _code: impl FnMut(&ImageFrame)) {
     todo!()
 }
 
@@ -295,10 +295,10 @@ pub fn foreach_frame(image: &Image, mut code: impl FnMut(&ImageFrame)) {
 ///         ...
 ///     });
 ///
-pub fn foreach_pixmap(placement: &ImagePlacement, pixmapvar: (), mut code: impl FnMut(())) {
+pub fn foreach_pixmap(_placement: &ImagePlacement, _pixmapvar: (), _code: impl FnMut(())) {
     todo!()
 }
 
-pub fn gr_find_image(image_id: usize) -> &'static Image {
+pub fn gr_find_image(_image_id: usize) -> &'static Image {
     todo!()
 }

@@ -25,7 +25,7 @@ use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::macros::macs::include_font;
 use crate::renderers::{self, TextRenderer};
-use crate::terminal::{IS_TRUECOL, Term, TermMode, twrite_aborted};
+use crate::terminal::{IS_TRUECOL, Term, twrite_aborted};
 use crate::text_manager::TermGlyph;
 use crate::win::{TermWindow, WinMode};
 
@@ -122,10 +122,10 @@ impl<'a> App<'a> {
             return;
         }
 
-        let is_alt_screen = self.term.tisaltscr();
+        let _is_alt_screen = self.term.tisaltscr();
 
         // shortcuts
-        for shorcut in super::config::shortcuts {
+        for _shorcut in super::config::shortcuts {
             /*
              * TODO:
              * match shortcuts
@@ -351,9 +351,9 @@ impl<'a> App<'a> {
 
     fn xdrawcursor(
         &mut self,
-        cx: usize,
-        cy: usize,
-        g: &Glyph,
+        _cx: usize,
+        _cy: usize,
+        _g: &Glyph,
         ox: usize,
         oy: usize,
         og: *mut Glyph,
@@ -376,19 +376,19 @@ impl<'a> App<'a> {
         println!("Finished drawing");
     }
 
-    fn xximspot(&self, ocx: usize, ocy: usize) {
+    fn xximspot(&self, _ocx: usize, _ocy: usize) {
         // TODO:
         println!("xximspot");
     }
 
     fn xdrawline(&mut self, line: &[Glyph], x1: i32, y1: usize, x2: usize) {
-        let i = 0;
-        let x = 0;
-        let ox = 0;
-        let numspecs = 0;
+        let _i = 0;
+        let _x = 0;
+        let _ox = 0;
+        let _numspecs = 0;
 
-        let base: Glyph = Glyph::default();
-        let new: Glyph = Glyph::default();
+        let _base: Glyph = Glyph::default();
+        let _new: Glyph = Glyph::default();
 
         fn u32_to_tuple(color: u32) -> (u8, u8, u8) {
             let color = if !IS_TRUECOL(color) {
@@ -428,7 +428,7 @@ impl<'a> App<'a> {
         }
     }
 
-    fn xstartimagedraw(&self, dirty: &[bool], row: usize) {
+    fn xstartimagedraw(&self, _dirty: &[bool], _row: usize) {
         // todo!()
     }
 
@@ -439,15 +439,15 @@ impl<'a> App<'a> {
 
 impl<'a> ApplicationHandler for App<'a> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        static mut ptr: *mut App = std::ptr::null_mut::<App>();
+        static mut PTR: *mut App = std::ptr::null_mut::<App>();
         unsafe {
             let void = self as *mut App as *mut c_void;
 
-            ptr = void as *mut App;
+            PTR = void as *mut App;
         }
 
         let draw: Box<dyn FnMut() -> ()> = Box::new(move || unsafe {
-            (*ptr).draw();
+            (*PTR).draw();
         });
 
         self.term.draw = Some(draw);
@@ -518,7 +518,7 @@ impl<'a> ApplicationHandler for App<'a> {
         self.app_state = Some(AppState { gl_surface, window });
     }
 
-    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, _cause: winit::event::StartCause) {
         let timeout: f64 = maxlatency as f64 / 1000.0;
         unsafe {
             // TODO: implement missing timeout handling

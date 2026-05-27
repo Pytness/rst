@@ -6,20 +6,16 @@ use fontconfig::FC_WEIGHT;
 use fontconfig::FC_WEIGHT_BOLD;
 use fontconfig::Fontconfig;
 use fontconfig::Pattern;
-use fontconfig_sys::Fc;
 use fontconfig_sys::FcMatrix;
 use fontconfig_sys::FcPattern;
-use fontconfig_sys::ffi_dispatch;
-use fontconfig_sys::statics::{LIB, LIB_RESULT};
+use fontconfig_sys::statics::LIB;
 use freetype::ffi::FT_Matrix;
 use freetype::ffi::FT_Vector;
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
-use std::rc::Rc;
 use std::sync::LazyLock;
 
-use freetype::face::LoadFlag;
-use freetype::{Face, GlyphSlot, Library};
+use freetype::{Face, Library};
 use rustybuzz::{Face as RbFace, UnicodeBuffer};
 
 const DEFAULT_DPI: u32 = 96;
@@ -231,7 +227,7 @@ impl FontRegistry {
         }
     }
 
-    pub fn register_font(&mut self, name: &str, bytes: &'static [u8]) {
+    pub fn register_font(&mut self, name: &str, _bytes: &'static [u8]) {
         let fontconfig = Fontconfig::new().expect("failed to create fontconfig instance");
 
         let mut pattern = unsafe {

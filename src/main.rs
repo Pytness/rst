@@ -30,7 +30,7 @@ fn main() {
 
     let mut win = TermWindow::default();
 
-    let mut term = Term::new(cols, rows, &mut win as *mut TermWindow);
+    let term = Term::new(cols, rows, &mut win as *mut TermWindow);
 
     // xinit
 
@@ -50,4 +50,4 @@ fn main() {
     };
 }
 
-fn xinit(cols: usize, rows: usize) {}
+fn xinit(_cols: usize, _rows: usize) {}

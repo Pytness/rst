@@ -5,7 +5,6 @@ use std::sync::LazyLock;
 
 use fontconfig_sys::FcMatrix;
 use freetype::bitmap::PixelMode;
-use freetype::ffi::FT_Matrix;
 use freetype::{Library, face::LoadFlag};
 use glow::HasContext;
 
@@ -508,7 +507,7 @@ impl<'a> TextRenderer<'a> {
                         (0.0,   h),
                     ];
 
-                    let mut vertex_uvs = [
+                    let vertex_uvs = [
                         (0.0, 0.0),
                         (1.0, 0.0),
                         (1.0, 1.0),
@@ -541,11 +540,6 @@ impl<'a> TextRenderer<'a> {
                         let min_x = vertex_positions
                             .iter()
                             .map(|(x, _)| *x)
-                            .fold(f32::INFINITY, f32::min);
-
-                        let min_y = vertex_positions
-                            .iter()
-                            .map(|(_, y)| *y)
                             .fold(f32::INFINITY, f32::min);
 
                         vertex_positions = vertex_positions.map(|(x, y)| (x - min_x, y)); // Shift left to align with cell start
