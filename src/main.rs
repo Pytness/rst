@@ -20,6 +20,7 @@ mod kitty;
 mod macros;
 mod renderers;
 mod sixel;
+mod term_state;
 mod terminal;
 mod text_manager;
 mod win;

@@ -122,7 +122,7 @@ impl<'a> App<'a> {
             return;
         }
 
-        let _is_alt_screen = self.term.tisaltscr();
+        let _is_alt_screen = self.term.state.tisaltscr();
 
         // shortcuts
         for _shorcut in super::config::shortcuts {
@@ -258,7 +258,7 @@ impl<'a> App<'a> {
         self.win.vborderpx =
             ((self.win.h - row * self.win.ch) as f64 * super::config::VALIGN) as u32;
 
-        self.term.tresize(col as usize, row as usize);
+        self.term.state.tresize(col as usize, row as usize);
 
         // xresize(col, row);
 
@@ -275,55 +275,55 @@ impl<'a> App<'a> {
     pub fn brelease(&mut self) {}
 
     pub fn draw(&mut self) {
-        let mut cx = self.term.c.x;
-        let mut ocx = self.term.ocx;
-        let mut ocy = self.term.c.y;
+        let mut cx = self.term.state.c.x;
+        let mut ocx = self.term.state.ocx;
+        let mut ocy = self.term.state.c.y;
 
         if !self.xstartdraw() {
             return;
         }
 
-        ocx = ocx.max(0).min(self.term.col - 1);
-        ocy = ocy.max(0).min(self.term.row - 1);
+        ocx = ocx.max(0).min(self.term.state.col - 1);
+        ocy = ocy.max(0).min(self.term.state.row - 1);
 
-        if self.term.line[self.term.ocy][self.term.ocx]
+        if self.term.state.line[self.term.state.ocy][self.term.state.ocx]
             .mode
             .contains(GlyphAttribute::ATTR_WDUMMY)
         {
-            self.term.ocx -= 1;
+            self.term.state.ocx -= 1;
         }
 
-        if self.term.line[self.term.c.y][cx]
+        if self.term.state.line[self.term.state.c.y][cx]
             .mode
             .contains(GlyphAttribute::ATTR_WDUMMY)
         {
             cx -= 1;
         }
 
-        self.drawregion(0, 0, self.term.col, self.term.row);
+        self.drawregion(0, 0, self.term.state.col, self.term.state.row);
 
-        let line = self.term.line[self.term.ocy].clone();
-        let g = &self.term.line[self.term.c.y][cx].clone();
-        let og = &raw mut self.term.line[self.term.ocy][self.term.ocx];
+        let line = self.term.state.line[self.term.state.ocy].clone();
+        let g = &self.term.state.line[self.term.state.c.y][cx].clone();
+        let og = &raw mut self.term.state.line[self.term.state.ocy][self.term.state.ocx];
 
         self.xdrawcursor(
             cx as usize,
-            self.term.c.y as usize,
+            self.term.state.c.y as usize,
             &g,
-            self.term.ocx as usize,
-            self.term.ocy as usize,
+            self.term.state.ocx as usize,
+            self.term.state.ocy as usize,
             og,
             &line,
-            self.term.col as usize,
+            self.term.state.col as usize,
         );
 
-        self.term.ocx = cx;
-        self.term.ocy = self.term.c.y;
+        self.term.state.ocx = cx;
+        self.term.state.ocy = self.term.state.c.y;
 
         self.xfinishdraw();
 
-        if ocx != self.term.ocx || ocy != self.term.ocy {
-            self.xximspot(self.term.ocx as usize, self.term.ocy as usize);
+        if ocx != self.term.state.ocx || ocy != self.term.state.ocy {
+            self.xximspot(self.term.state.ocx as usize, self.term.state.ocy as usize);
         }
     }
 
@@ -333,15 +333,15 @@ impl<'a> App<'a> {
 
     fn drawregion(&mut self, x1: i32, y1: i32, x2: usize, y2: usize) {
         println!("Drawing region: ({}, {}) to ({}, {})", x1, y1, x2, y2);
-        self.xstartimagedraw(&self.term.dirty, self.term.row);
+        self.xstartimagedraw(&self.term.state.dirty, self.term.state.row);
 
         for y in y1 as usize..y2 {
-            if !self.term.dirty[y] {
+            if !self.term.state.dirty[y] {
                 continue;
             }
 
-            self.term.dirty[y] = false;
-            let line = &self.term.line[y].clone();
+            self.term.state.dirty[y] = false;
+            let line = &self.term.state.line[y].clone();
             println!("Drawing line {}", y);
             self.xdrawline(line, x1, y, x2);
         }
@@ -361,7 +361,7 @@ impl<'a> App<'a> {
         len: usize,
     ) {
         // remove the old cursor
-        if self.term.selected(ox, oy) {
+        if self.term.state.selected(ox, oy) {
             unsafe { (*og).mode.toggle(GlyphAttribute::ATTR_REVERSE) };
         }
 
@@ -417,8 +417,11 @@ impl<'a> App<'a> {
 
         unsafe {
             self.quad_renderer.as_ref().unwrap().with(|| {
-                println!("Pixw: {}, Pixh: {}", self.term.pixw, self.term.pixh);
-                let proj = ortho(self.term.pixw as f32, self.term.pixh as f32);
+                println!(
+                    "Pixw: {}, Pixh: {}",
+                    self.term.state.pixw, self.term.state.pixh
+                );
+                let proj = ortho(self.term.state.pixw as f32, self.term.state.pixh as f32);
 
                 self.text_renderer
                     .as_mut()

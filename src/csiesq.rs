@@ -2,8 +2,7 @@ use std::ptr::null_mut;
 
 use crate::config::VTIDEN;
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
-use crate::terminal::{CursorMovement, Term, TermMode};
-
+use crate::term_state::{CursorMovement, TermMode, TermState};
 use crate::win::TermWindow;
 
 pub const UTF_INVALID: usize = 0xFFFD;
@@ -113,8 +112,7 @@ impl CSIEscape {
         }
     }
 
-    pub fn handle(&mut self, term: *mut Term, win: *mut TermWindow) {
-        let term = unsafe { &mut *term };
+    pub fn handle(&mut self, term: &mut TermState, win: *mut TermWindow) {
         let win = unsafe { &mut *win };
         let maxcol = term.col;
 
@@ -158,7 +156,7 @@ impl CSIEscape {
             // dA -- Device Attributes
             b'c' => {
                 if self.arg[0] == 0 {
-                    term.ttywrite(VTIDEN, VTIDEN.len(), false);
+                    term.ttywrite_pty(VTIDEN, VTIDEN.len());
                 }
             }
 
@@ -168,7 +166,7 @@ impl CSIEscape {
 
                 if term.lastc != '\0' {
                     for _ in 0..self.arg[0] {
-                        term.tputc(term.lastc);
+                        term.tputc_char(term.lastc);
                     }
                 }
             }
@@ -298,7 +296,7 @@ impl CSIEscape {
                             // number of sixel color registers
                             // (read, reset and read the maximum value give the same response)
                             let n = snprintf!(buffer, b"\x1b[?1;0;%dS\0", DECSIXEL_PALETTE_MAX);
-                            term.ttywrite(&buffer, n as usize, true);
+                            term.ttywrite_pty(&buffer, n as usize);
                         } else if pi == 2 && pa_is_valid {
                             // sixel graphics geometry (in pixels)
                             // (read, reset and read the maximum value give the same response)
@@ -308,13 +306,13 @@ impl CSIEscape {
                                     (term.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX)
                                 );
 
-                            term.ttywrite(&buffer, n as usize, true);
+                            term.ttywrite_pty(&buffer, n as usize);
                         } else {
                             // the number of color registers and sixel geometry can't be changed
                             // failure
                             let n = snprintf!(buffer, b"\x1b[?%d;3;0S\0", pi);
 
-                            term.ttywrite(&buffer, n as usize, true);
+                            term.ttywrite_pty(&buffer, n as usize);
                             unknown();
                         }
                     } else {
@@ -389,13 +387,13 @@ impl CSIEscape {
                     // Status Report "OK" `0n`
                     5 => {
                         const TEXT: &[u8] = b"\x1b[0n";
-                        term.ttywrite(TEXT, TEXT.len(), false);
+                        term.ttywrite_pty(TEXT, TEXT.len());
                     },
                     // Report Cursor Position (CPR) "<row>;<column>R"
                     6 => {
                         let mut buffer = [0u8; 40];
                         let len = snprintf!(buffer, b"\x1b[%i;%iR\0", term.c.y + 1, term.c.x + 1);
-                        term.ttywrite(&buffer, len as usize, true);
+                        term.ttywrite_pty(&buffer, len as usize);
                     }
                     _ => unknown(),
 
@@ -448,7 +446,7 @@ impl CSIEscape {
                     b'q' => {
                         // TODO: implement better version reporting
                         const TEXT: &[u8] = b"\x1bP>|rst(0.1)\x1b\\";
-                        term.ttywrite(TEXT, TEXT.len(), false);
+                        term.ttywrite_pty(TEXT, TEXT.len());
                     }
                     _ => unknown(),
                 }
@@ -461,19 +459,19 @@ impl CSIEscape {
                     // Report text area size in pixels
                     14 => {
                         let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", term.pixh, term.pixw);
-                        term.ttywrite(&buffer, len as usize, false);
+                        term.ttywrite_pty(&buffer, len as usize);
                     }
 
                     // Report character cell sie in pixels
                     16 => {
 			let len = snprintf!(buffer, "\033[6;%i;%it", term.pixh / term.row, term.pixw / term.col);
-                        term.ttywrite(&buffer, len as usize, false);
+                        term.ttywrite_pty(&buffer, len as usize);
                     }
 
                     // Report the size of the text area in characters
                     18 => {
                         let len = snprintf!(buffer, "\033[8;%i;%it", term.row, term.col);
-                        term.ttywrite(&buffer, len as usize, false);
+                        term.ttywrite_pty(&buffer, len as usize);
                     }
 
                     _ => unknown(),
@@ -499,7 +497,7 @@ impl CSIEscape {
 
                         let mut buffer = [0u8; 40];
                         let len = snprintf!(buffer, "\033[?%d;%d$y", self.arg[0], feature_mode);
-                        term.ttywrite(&buffer, len as usize, false);
+                        term.ttywrite_pty(&buffer, len as usize);
                     }
                     _ => unknown(),
                 }
