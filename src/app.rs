@@ -18,7 +18,7 @@ use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
 use crate::colors::COLORS;
-use crate::config::maxlatency;
+use crate::config::MAXLATENCY;
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
@@ -417,10 +417,6 @@ impl<'a> App<'a> {
 
         unsafe {
             self.quad_renderer.as_ref().unwrap().with(|| {
-                println!(
-                    "Pixw: {}, Pixh: {}",
-                    self.term.state.pixw, self.term.state.pixh
-                );
                 let proj = ortho(self.term.state.pixw as f32, self.term.state.pixh as f32);
 
                 self.text_renderer
@@ -522,7 +518,7 @@ impl<'a> ApplicationHandler for App<'a> {
     }
 
     fn new_events(&mut self, event_loop: &ActiveEventLoop, _cause: winit::event::StartCause) {
-        let timeout: f64 = maxlatency as f64 / 1000.0;
+        let timeout: f64 = MAXLATENCY as f64 / 1000.0;
         unsafe {
             // TODO: implement missing timeout handling
             let tv: libc::timespec = libc::timespec {
@@ -554,12 +550,13 @@ impl<'a> ApplicationHandler for App<'a> {
             }
 
             // set winit event loop to rerun in 10ms
-            let timeout = std::time::Duration::from_millis(maxlatency as u64);
+            let timeout = std::time::Duration::from_millis(MAXLATENCY as u64);
             let control = ControlFlow::WaitUntil(std::time::Instant::now() + timeout);
             event_loop.set_control_flow(control);
         }
 
         self.draw();
+
         if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
             window.request_redraw();
         }
