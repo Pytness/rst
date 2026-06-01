@@ -112,8 +112,8 @@ impl CSIEscape {
         }
     }
 
-    pub fn handle(&mut self, term: &mut TermState, win: &mut TermWindow) {
-        let maxcol = term.col;
+    pub fn handle(&mut self, state: &mut TermState, win: &mut TermWindow) {
+        let maxcol = state.col;
 
         let unknown = || {
             eprint!("erresc: uknown csi ");
@@ -124,30 +124,30 @@ impl CSIEscape {
             // ICH -- Insert <n> blank char
             b'@' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tinsertblank(self.arg[0] as usize);
+                state.tinsertblank(self.arg[0] as usize);
             }
 
             // CUU -- Cursor <n> Up
             b'A' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(term.c.x, term.c.y.saturating_sub(self.arg[0] as usize));
+                state.tmoveto(state.c.x, state.c.y.saturating_sub(self.arg[0] as usize));
             }
 
             b'B' | // CUD -- Cursor <n> Down
             b'e'   // VPR -- Cursor <n> Down
             => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(term.c.x, term.c.y - self.arg[0] as usize);
+                state.tmoveto(state.c.x, state.c.y - self.arg[0] as usize);
             }
 
             // MC -- Media Copy
             b'i' => {
                 match self.arg[0] {
-                    0 => term.tdump(),
-                    1 => term.tdumpline(term.c.y),
-                    2 => term.tdumpsel(),
-                    4 => term.mode.remove(TermMode::MODE_PRINT),
-                    5 => term.mode.insert(TermMode::MODE_PRINT),
+                    0 => state.tdump(),
+                    1 => state.tdumpline(state.c.y),
+                    2 => state.tdumpsel(),
+                    4 => state.mode.remove(TermMode::MODE_PRINT),
+                    5 => state.mode.insert(TermMode::MODE_PRINT),
                     _ => {}
                 }
             }
@@ -155,7 +155,7 @@ impl CSIEscape {
             // dA -- Device Attributes
             b'c' => {
                 if self.arg[0] == 0 {
-                    term.ttywrite_pty(VTIDEN, VTIDEN.len());
+                    state.ttywrite_pty(VTIDEN, VTIDEN.len());
                 }
             }
 
@@ -163,9 +163,9 @@ impl CSIEscape {
             b'b' => {
                 self.arg[0] = self.arg[0].max(1).min(65535);
 
-                if term.lastc != '\0' {
+                if state.lastc != '\0' {
                     for _ in 0..self.arg[0] {
-                        term.tputc_char(term.lastc);
+                        state.tputc_char(state.lastc);
                     }
                 }
             }
@@ -174,34 +174,34 @@ impl CSIEscape {
             b'a'  // HPR -- Cursor <n> Forward
             => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(term.c.x + self.arg[0] as usize, term.c.y);
+                state.tmoveto(state.c.x + self.arg[0] as usize, state.c.y);
             }
 
             // CUB  -- Cursor <n> Backward
             b'D' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(term.c.x - self.arg[0] as usize, term.c.y);
+                state.tmoveto(state.c.x - self.arg[0] as usize, state.c.y);
             }
 
             // CNL -- Cursor <n> Down and first col
             b'E' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(0, term.c.y + self.arg[0] as usize);
+                state.tmoveto(0, state.c.y + self.arg[0] as usize);
             }
 
             // CPL -- Cursor <n> Up and first col
             b'F' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(0, term.c.y - self.arg[0] as usize);
+                state.tmoveto(0, state.c.y - self.arg[0] as usize);
             }
 
             // TBC -- Tabulation clear
             b'g' => {
                 match self.arg[0] {
                     // clear current tab sotp
-                    0 => term.tabs[term.c.x] = 0,
+                    0 => state.tabs[state.c.x] = 0,
                     // clear all the tabs
-                    3 => term.tabs.iter_mut().for_each(|t| *t = 0),
+                    3 => state.tabs.iter_mut().for_each(|t| *t = 0),
                     _ =>  unknown(),
 
                 }
@@ -211,7 +211,7 @@ impl CSIEscape {
             b'`'   // HPA
             => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(self.arg[0] as usize - 1, term.c.y);
+                state.tmoveto(self.arg[0] as usize - 1, state.c.y);
             }
 
             b'H' | // CUP -- Move to <row> <column>
@@ -219,13 +219,13 @@ impl CSIEscape {
             => {
                 DEFAULT!(self.arg[0], 1);
                 DEFAULT!(self.arg[1], 1);
-                term.tmoveato(self.arg[1] as usize - 1, self.arg[0] as usize - 1);
+                state.tmoveato(self.arg[1] as usize - 1, self.arg[0] as usize - 1);
             }
 
             // CHT -- CUrsor Forwar Tabulation <n> tab stops
             b'I' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tputtab(self.arg[0] as isize);
+                state.tputtab(self.arg[0] as isize);
             }
 
             // ED -- Clear screen
@@ -233,22 +233,22 @@ impl CSIEscape {
                 match self.arg[0] {
                     // below
                     0 => {
-			term.tclearregion(term.c.x, term.c.y, maxcol - 1, term.c.y);
-                        if term.c.y < term.row - 1 {
-                            term.tclearregion(0, term.c.y + 1, maxcol - 1, term.row - 1);
+			state.tclearregion(state.c.x, state.c.y, maxcol - 1, state.c.y);
+                        if state.c.y < state.row - 1 {
+                            state.tclearregion(0, state.c.y + 1, maxcol - 1, state.row - 1);
                         }
                     }
                     // above
                     1 => {
-                        if term.c.y > 0 {
-                            term.tclearregion(0, 0, maxcol - 1, term.c.y - 1);
+                        if state.c.y > 0 {
+                            state.tclearregion(0, 0, maxcol - 1, state.c.y - 1);
                         }
-                        term.tclearregion(0, term.c.y, term.c.x, term.c.y);
+                        state.tclearregion(0, state.c.y, state.c.x, state.c.y);
                     }
                     // screen
                     2 => {
-                        term.tclearregion(0, 0, maxcol - 1, term.row - 1);
-                        term.tdeleteimages();
+                        state.tclearregion(0, 0, maxcol - 1, state.row - 1);
+                        state.tdeleteimages();
                     }
                     // scrollback
                     3 => {
@@ -261,8 +261,8 @@ impl CSIEscape {
                     }
                     // sixels
                     6 => {
-                        term.tdeleteimages();
-                        term.tfulldirt();
+                        state.tdeleteimages();
+                        state.tfulldirt();
                     }
                     _ => unknown(),
                 }
@@ -271,11 +271,11 @@ impl CSIEscape {
             b'K' => {
                 match self.arg[0] {
                     // right
-                    0 => term.tclearregion(term.c.x, term.c.y, maxcol - 1, term.c.y),
+                    0 => state.tclearregion(state.c.x, state.c.y, maxcol - 1, state.c.y),
                     // left
-                    1 => term.tclearregion(0, term.c.y, term.c.x, term.c.y),
+                    1 => state.tclearregion(0, state.c.y, state.c.x, state.c.y),
                     // all
-                    2 => term.tclearregion(0, term.c.y, maxcol - 1, term.c.y),
+                    2 => state.tclearregion(0, state.c.y, maxcol - 1, state.c.y),
                     _ => {}
                 }
             }
@@ -295,23 +295,23 @@ impl CSIEscape {
                             // number of sixel color registers
                             // (read, reset and read the maximum value give the same response)
                             let n = snprintf!(buffer, b"\x1b[?1;0;%dS\0", DECSIXEL_PALETTE_MAX);
-                            term.ttywrite_pty(&buffer, n as usize);
+                            state.ttywrite_pty(&buffer, n as usize);
                         } else if pi == 2 && pa_is_valid {
                             // sixel graphics geometry (in pixels)
                             // (read, reset and read the maximum value give the same response)
 
                             let n = snprintf!(buffer, b"\x1b[?2;0;%d;%dS\0",
-                                    (term.col * win.cw as usize).min(DECSIXEL_WIDTH_MAX),
-                                    (term.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX)
+                                    (state.col * win.cw as usize).min(DECSIXEL_WIDTH_MAX),
+                                    (state.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX)
                                 );
 
-                            term.ttywrite_pty(&buffer, n as usize);
+                            state.ttywrite_pty(&buffer, n as usize);
                         } else {
                             // the number of color registers and sixel geometry can't be changed
                             // failure
                             let n = snprintf!(buffer, b"\x1b[?%d;3;0S\0", pi);
 
-                            term.ttywrite_pty(&buffer, n as usize);
+                            state.ttywrite_pty(&buffer, n as usize);
                             unknown();
                         }
                     } else {
@@ -320,64 +320,64 @@ impl CSIEscape {
                 }
 
                 DEFAULT!(self.arg[0], 1);
-                term.tscrollup(term.top, self.arg[0] as usize);
+                state.tscrollup(state.top, self.arg[0] as usize);
             }
 
             // SD -- Scroll Mn> line down
             b'T' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tscrolldown(term.top, self.arg[0] as usize);
+                state.tscrolldown(state.top, self.arg[0] as usize);
             }
 
             // IL -- Insert <n> blank line(s)
             b'L' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tinsertblankline(self.arg[0] as usize);
+                state.tinsertblankline(self.arg[0] as usize);
             }
 
             // RM -- Reset Mode
             b'l' => {
-                term.tsetmode(self.private, 0, &self.arg, self.narg);
+                state.tsetmode(self.private, 0, &self.arg, self.narg);
             },
 
             // DL -- Delete Mn> lines
             b'M' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tdeleteline(self.arg[0] as usize);
+                state.tdeleteline(self.arg[0] as usize);
             }
 
             // ECH -- Erase <n> char
             b'X' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tclearregion(term.c.x, term.c.y, term.c.x + (self.arg[0] - 1) as usize, term.c.y);
+                state.tclearregion(state.c.x, state.c.y, state.c.x + (self.arg[0] - 1) as usize, state.c.y);
             }
 
             // DCH -- Delete <n> char
             b'P' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tdeletechar(self.arg[0] as usize);
+                state.tdeletechar(self.arg[0] as usize);
             }
 
             // CBT -- Cursor Backward Tabulation <n> tab stops
             b'Z' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tputtab(-self.arg[0] as isize);
+                state.tputtab(-self.arg[0] as isize);
             }
 
             // VPA -- Move to <row>
             b'd' => {
                 DEFAULT!(self.arg[0], 1);
-                term.tmoveto(term.c.x, self.arg[0] as usize - 1);
+                state.tmoveto(state.c.x, self.arg[0] as usize - 1);
             }
 
             // SM -- Set terminal mode
             b'h' => {
-                term.tsetmode(self.private, 1, &self.arg, self.narg);
+                state.tsetmode(self.private, 1, &self.arg, self.narg);
             }
 
             // SGR - Terminal attribute (color)
             b'm' => {
-                term.tsetattr(&self.arg, self.narg);
+                state.tsetattr(&self.arg, self.narg);
             }
 
             // DSR -- Device Status Report
@@ -386,13 +386,13 @@ impl CSIEscape {
                     // Status Report "OK" `0n`
                     5 => {
                         const TEXT: &[u8] = b"\x1b[0n";
-                        term.ttywrite_pty(TEXT, TEXT.len());
+                        state.ttywrite_pty(TEXT, TEXT.len());
                     },
                     // Report Cursor Position (CPR) "<row>;<column>R"
                     6 => {
                         let mut buffer = [0u8; 40];
-                        let len = snprintf!(buffer, b"\x1b[%i;%iR\0", term.c.y + 1, term.c.x + 1);
-                        term.ttywrite_pty(&buffer, len as usize);
+                        let len = snprintf!(buffer, b"\x1b[%i;%iR\0", state.c.y + 1, state.c.x + 1);
+                        state.ttywrite_pty(&buffer, len as usize);
                     }
                     _ => unknown(),
 
@@ -405,15 +405,15 @@ impl CSIEscape {
                     unknown();
                 } else {
                     DEFAULT!(self.arg[0], 1);
-                    DEFAULT!(self.arg[1], term.row as i32);
-                    term.tsetscroll(self.arg[0] as usize - 1, self.arg[1] as usize - 1);
-                    term.tmoveato(0, 0);
+                    DEFAULT!(self.arg[1], state.row as i32);
+                    state.tsetscroll(self.arg[0] as usize - 1, self.arg[1] as usize - 1);
+                    state.tmoveato(0, 0);
                 }
             }
 
             // DECSC -- Save Cursor Position (ANIS.SYS)
             b's' => {
-                term.tcursor(CursorMovement::CURSOR_SAVE);
+                state.tcursor(CursorMovement::CURSOR_SAVE);
             }
 
             // DECRC -- Restore cursor position (ANIS.SYS)
@@ -421,7 +421,7 @@ impl CSIEscape {
                 if self.private {
                     unknown();
                 } else {
-                    term.tcursor(CursorMovement::CURSOR_LOAD);
+                    state.tcursor(CursorMovement::CURSOR_LOAD);
                 }
             }
 
@@ -445,7 +445,7 @@ impl CSIEscape {
                     b'q' => {
                         // TODO: implement better version reporting
                         const TEXT: &[u8] = b"\x1bP>|rst(0.1)\x1b\\";
-                        term.ttywrite_pty(TEXT, TEXT.len());
+                        state.ttywrite_pty(TEXT, TEXT.len());
                     }
                     _ => unknown(),
                 }
@@ -457,20 +457,20 @@ impl CSIEscape {
                 match self.arg[0] {
                     // Report text area size in pixels
                     14 => {
-                        let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", term.pixh, term.pixw);
-                        term.ttywrite_pty(&buffer, len as usize);
+                        let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", state.pixh, state.pixw);
+                        state.ttywrite_pty(&buffer, len as usize);
                     }
 
                     // Report character cell sie in pixels
                     16 => {
-			let len = snprintf!(buffer, "\033[6;%i;%it", term.pixh / term.row, term.pixw / term.col);
-                        term.ttywrite_pty(&buffer, len as usize);
+			let len = snprintf!(buffer, "\033[6;%i;%it", state.pixh / state.row, state.pixw / state.col);
+                        state.ttywrite_pty(&buffer, len as usize);
                     }
 
                     // Report the size of the text area in characters
                     18 => {
-                        let len = snprintf!(buffer, "\033[8;%i;%it", term.row, term.col);
-                        term.ttywrite_pty(&buffer, len as usize);
+                        let len = snprintf!(buffer, "\033[8;%i;%it", state.row, state.col);
+                        state.ttywrite_pty(&buffer, len as usize);
                     }
 
                     _ => unknown(),
@@ -496,7 +496,7 @@ impl CSIEscape {
 
                         let mut buffer = [0u8; 40];
                         let len = snprintf!(buffer, "\033[?%d;%d$y", self.arg[0], feature_mode);
-                        term.ttywrite_pty(&buffer, len as usize);
+                        state.ttywrite_pty(&buffer, len as usize);
                     }
                     _ => unknown(),
                 }

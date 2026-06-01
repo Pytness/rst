@@ -5,7 +5,6 @@ use winit::event_loop::EventLoop;
 use self::app::App;
 use self::gl_handler::window_attributes;
 use self::terminal::Term;
-use self::win::TermWindow;
 
 mod app;
 mod boxdraw;

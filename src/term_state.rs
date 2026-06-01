@@ -1,9 +1,13 @@
+use std::ptr::null_mut;
+
 use bitflags::bitflags;
+use unicode_width::UnicodeWidthChar;
 
 use crate::BETWEEN;
 use crate::boxdraw::boxdraw::isboxdraw;
 use crate::config;
 use crate::glyph::{Glyph, GlyphAttribute};
+use crate::kitty::{tdefcolor, tsetdecorcolor, tsetdecorstyle};
 
 pub static mut IOFD: i32 = 0;
 pub static mut CMDFD: i32 = 0;
@@ -983,31 +987,358 @@ impl TermState {
             }
         }
     }
+
+    pub fn tputc_char(&mut self, u: char) {
+        let width = u.width().unwrap_or(0);
+
+        if self.selected(self.c.x, self.c.y) {
+            self.selclear();
+        }
+
+        if width == 0 {
+            // Combining character – not properly supported; handle image diacritics
+            if self.c.y == 0 && self.c.x == 0 {
+                self.lastc = u;
+                return;
+            }
+
+            let (gx, gy): (usize, usize);
+            if self.c.x == 0 {
+                gy = self.c.y - 1;
+                gx = self.col - 1;
+            } else if self.c.state.contains(CursorState::CURSOR_WRAPNEXT) {
+                gy = self.c.y;
+                gx = self.c.x;
+            } else {
+                gy = self.c.y;
+                gx = self.c.x - 1;
+            }
+
+            let num = diacritic_to_num(u);
+            if num != 0 && self.line[gy][gx].mode.contains(GlyphAttribute::ATTR_IMAGE) {
+                let diaccount = tgetimgdiacriticcount(&self.line[gy][gx]);
+                if diaccount == 0 {
+                    tsetimgrow(&mut self.line[gy][gx], num as usize);
+                } else if diaccount == 1 {
+                    tsetimgcol(&mut self.line[gy][gx], num as usize);
+                } else if diaccount == 2 {
+                    tsetimg4thbyteplus1(&mut self.line[gy][gx], num);
+                }
+                tsetimgdiacriticcount(&mut self.line[gy][gx], diaccount as i32 + 1);
+            }
+            self.lastc = u;
+            return;
+        }
+
+        if self.mode.contains(TermMode::MODE_WRAP)
+            && self.c.state.contains(CursorState::CURSOR_WRAPNEXT)
+        {
+            let (cx, cy) = (self.c.x, self.c.y);
+            self.line[cy][cx].mode |= GlyphAttribute::ATTR_WRAP;
+            self.tnewline(true);
+        }
+
+        if self.mode.contains(TermMode::MODE_INSERT) && (self.c.x + width as usize) < self.col {
+            let cx = self.c.x;
+            let cy = self.c.y;
+            let move_count = self.col - cx - width as usize;
+            self.line[cy].copy_within(cx..cx + move_count, cx + width as usize);
+            self.line[cy][cx].mode &= !GlyphAttribute::ATTR_WIDE;
+        }
+
+        if self.c.x + width as usize > self.col {
+            if self.mode.contains(TermMode::MODE_WRAP) {
+                self.tnewline(true);
+            } else {
+                let w = width as usize;
+                let col = self.col;
+                self.tmoveto(col - w, self.c.y);
+            }
+        }
+
+        let (cx, cy) = (self.c.x, self.c.y);
+        self.tsetchar(u, &self.c.attr.clone(), cx, cy);
+        self.lastc = u;
+
+        if width == 2 {
+            let (cx, cy) = (self.c.x, self.c.y);
+            self.line[cy][cx].mode |= GlyphAttribute::ATTR_WIDE;
+            if cx + 1 < self.col {
+                if self.line[cy][cx + 1].mode == GlyphAttribute::ATTR_WIDE && cx + 2 < self.col {
+                    self.line[cy][cx + 2].u = ' ';
+                    self.line[cy][cx + 2].mode &= !GlyphAttribute::ATTR_WDUMMY;
+                }
+                self.line[cy][cx + 1].u = '\0';
+                self.line[cy][cx + 1].mode = GlyphAttribute::ATTR_WDUMMY;
+            }
+        }
+
+        let (cx, cy) = (self.c.x, self.c.y);
+        if cx + (width as usize) < self.col {
+            self.tmoveto(cx + width as usize, cy);
+        } else {
+            self.c.state |= CursorState::CURSOR_WRAPNEXT;
+        }
+    }
+
+    pub fn tinsertblank(&mut self, n: usize) {
+        let src = self.c.x;
+        let dst = self.c.x + n;
+
+        let size = self.col - dst;
+        let line = &mut self.line[self.c.y];
+
+        line.copy_within(src..src + size, dst);
+        self.tclearregion(src, self.c.y, dst - 1, self.c.y);
+    }
+
+    pub fn tinsertblankline(&mut self, n: usize) {
+        if BETWEEN!(self.c.y, self.top, self.bot) {
+            self.tscrollup(self.c.y, n);
+        }
+    }
+
+    pub fn tdumpline(&self, _n: usize) {
+        // TODO: implement this
+        // char buf[UTF_SIZ];
+        // const Glyph *bp, *end;
+        //
+        // bp  = &term.line[n][0];
+        // end = &bp[MIN(tlinelen(n), term.col) - 1];
+        // if (bp != end || bp->u != ' ') {
+        // 	for (; bp <= end; ++bp) {
+        // 		tprinter(buf, utf8encode(bp->u, buf));
+        // 	}
+        // }
+        // tprinter("\n", 1);
+    }
+
+    pub fn tdump(&self) {
+        for i in 0..self.row {
+            self.tdumpline(i);
+        }
+    }
+
+    pub fn tdumpsel(&self) {
+        // TODO:
+        // char *ptr;
+        //
+        // if ((ptr = getsel())) {
+        // 	tprinter(ptr, strlen(ptr));
+        // 	free(ptr);
+        // }
+    }
+
+    pub fn tsetmode(&self, _private: bool, _set: i32, _args: &[i32], _narg: usize) {}
+
+    pub fn tsetattr(&mut self, attr: &[i32], l: usize) {
+        let mut i = 0;
+        while i < l {
+            let a = attr[i] as u32;
+
+            match a {
+                0 => {
+                    self.c.attr.mode &= !(GlyphAttribute::ATTR_BOLD
+                        | GlyphAttribute::ATTR_FAINT
+                        | GlyphAttribute::ATTR_ITALIC
+                        | GlyphAttribute::ATTR_UNDERLINE
+                        | GlyphAttribute::ATTR_BLINK
+                        | GlyphAttribute::ATTR_REVERSE
+                        | GlyphAttribute::ATTR_INVISIBLE
+                        | GlyphAttribute::ATTR_STRUCK);
+
+                    self.c.attr.fg = config::defaultfg;
+                    self.c.attr.bg = config::defaultbg;
+                    self.c.attr.decoration = DECOR_DEFAULT_COLOR;
+                }
+
+                1 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_BOLD;
+                }
+
+                2 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_FAINT;
+                }
+
+                3 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_ITALIC;
+                }
+
+                4 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_UNDERLINE;
+
+                    if i + 1 < l {
+                        i += 1;
+                        let idx = attr[i] as u32;
+
+                        if BETWEEN!(idx, 1, 5) {
+                            let g = &mut self.c.attr;
+
+                            tsetdecorstyle(g, idx);
+                        } else if idx == 0 {
+                            self.c.attr.mode.remove(GlyphAttribute::ATTR_UNDERLINE);
+
+                            let g = &mut self.c.attr;
+                            tsetdecorstyle(g, 0);
+                        } else {
+                            eprintln!("erresc: unknown underline style {}", idx);
+                        }
+                    }
+                }
+
+                // TODO: implement slow and rapid blink
+                5 | // slow blink
+                6   // rapid blink
+                => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_BLINK;
+                }
+
+                7 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_REVERSE;
+                }
+
+                8 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_INVISIBLE;
+                }
+
+                9 => {
+                    self.c.attr.mode |= GlyphAttribute::ATTR_STRUCK;
+                }
+
+                22 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_BOLD | GlyphAttribute::ATTR_FAINT);
+                }
+
+                23 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_ITALIC);
+                }
+
+                24 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_UNDERLINE);
+
+                    let g = &mut self.c.attr;
+                    tsetdecorstyle(g, 0);
+                }
+
+                25 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_BLINK);
+                }
+
+                27 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_REVERSE);
+                }
+
+                28 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_INVISIBLE);
+                }
+
+                29 => {
+                    self.c.attr.mode.remove(GlyphAttribute::ATTR_STRUCK);
+                }
+
+                38 => {
+                    let idx = tdefcolor(&attr, &mut i, l);
+
+                    if idx >= 0 {
+                        self.c.attr.fg = idx as u32;
+                    }
+                }
+
+                39 => {
+                    self.c.attr.fg = config::defaultfg;
+                }
+
+                48 => {
+                    let idx = tdefcolor(&attr, &mut i, l);
+
+                    if idx >= 0 {
+                        self.c.attr.bg = idx as u32;
+                    }
+                }
+
+                49 => {
+                    self.c.attr.bg = config::defaultbg;
+                }
+
+                // underline decoration color
+                58 => {
+                    let idx = tdefcolor(&attr, &mut i, l);
+
+                    if idx >= 0 {
+                        let g = &mut self.c.attr;
+                        tsetdecorcolor(g, idx as u32);
+                    }
+                }
+
+                59 => {
+                    let g = &mut self.c.attr;
+                    tsetdecorcolor(g, DECOR_DEFAULT_COLOR);
+                }
+
+                _ => {
+                    if BETWEEN!(a, 30, 37) {
+                        self.c.attr.bg = a - 30;
+                    } else if BETWEEN!(a, 40, 47) {
+                        self.c.attr.fg = a - 40;
+                    } else if BETWEEN!(a, 90, 97) {
+                        self.c.attr.bg = a - 90 + 8;
+                    } else if BETWEEN!(a, 100, 107) {
+                        self.c.attr.fg = a - 100 + 8;
+                    } else {
+                        eprintln!("erresc(default): gfx attr {} unkwnon", a);
+                        // TODO: CSI DUMP
+                    }
+                }
+            }
+
+            i += 1;
+        }
+    }
+
+    pub fn tputtab(&mut self, count: isize) {
+        let mut x = self.c.x;
+
+        if count > 0 {
+            while x < self.col && count > 0 {
+                x += 1;
+                while x < self.col && self.tabs[x] == 0 {
+                    x += 1;
+                }
+            }
+        } else if count < 0 {
+            while x > 0 && count < 0 {
+                x -= 1;
+                while x > 0 && self.tabs[x] == 0 {
+                    x -= 1;
+                }
+            }
+        }
+
+        self.c.x = x.min(self.col - 1)
+    }
+
+    pub fn tdeleteline(&mut self, n: usize) {
+        if BETWEEN!(self.c.y, self.top, self.bot) {
+            self.tscrollup(self.c.y, n);
+        }
+    }
+
+    pub fn tdeletechar(&mut self, n: usize) {
+        let n = n.min(self.col - self.c.x);
+
+        let dst = self.c.x;
+        let src = self.c.x + n;
+        let size = self.col - src;
+        let line = &mut self.line[self.c.y];
+
+        // TODO: check if this is correct
+        // memmove(&line[dst], &line[src], size * sizeof(Glyph));
+        line.copy_within(src..src + size, dst);
+        self.tclearregion(self.col - n, self.c.y, self.col - 1, self.c.y);
+    }
 }
 
 // ── free helper functions ─────────────────────────────────────────────────────
-
-pub(crate) unsafe fn tprinter(s: &[u8], len: usize) {
-    if IOFD >= 0 && xwrite(IOFD, s, len) < 0 {
-        eprintln!("Error writing to output file");
-        libc::close(IOFD);
-        IOFD = -1;
-    }
-}
-
-pub(crate) fn xwrite(fd: i32, buffer: &[u8], len: usize) -> isize {
-    let total = len;
-    let mut remaining = len;
-    while remaining > 0 {
-        let s = buffer[total - remaining..].as_ptr() as *const libc::c_void;
-        let r = unsafe { libc::write(fd, s, remaining) };
-        if r < 0 {
-            return r;
-        }
-        remaining -= r as usize;
-    }
-    total as isize
-}
 
 fn tgetimgrow(g: &Glyph) -> u32 {
     g.u as u32 & 0x1ff
@@ -1169,4 +1500,78 @@ fn gr_get_glyph_underneath_image(
     _row: u32,
 ) -> Option<&'static Glyph> {
     todo!()
+}
+
+fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
+    unsafe {
+        let pw = libc::getpwuid(libc::getuid());
+
+        if pw.is_null() {
+            panic!("getpwuid: {}", std::io::Error::last_os_error());
+        }
+
+        let mut sh = libc::getenv("SHELL".as_ptr() as *const libc::c_char);
+
+        if sh.is_null() {
+            sh = if *((*pw).pw_shell) != 0 {
+                (*pw).pw_shell
+            } else {
+                cmd.unwrap_or("/bin/sh").as_ptr() as *mut libc::c_char
+            };
+        }
+
+        let args: Vec<*const libc::c_char> = if let Some(args) = args {
+            let mut cargs: Vec<*const libc::c_char> = Vec::with_capacity(args.len() + 2);
+            cargs.push(sh);
+            for arg in args {
+                cargs.push(arg.as_ptr() as *const libc::c_char);
+            }
+            cargs.push(std::ptr::null());
+            cargs
+        } else {
+            vec![sh, std::ptr::null(), std::ptr::null()]
+        };
+
+        // TODO: handle envs
+        // unsetenv("COLUMNS");
+        // unsetenv("LINES");
+        // unsetenv("TERMCAP");
+        // setenv("LOGNAME", pw->pw_name, 1);
+        // setenv("USER", pw->pw_name, 1);
+        // setenv("SHELL", sh, 1);
+        // setenv("HOME", pw->pw_dir, 1);
+        // setenv("TERM", termname, 1);
+        // setenv("COLORTERM", "truecolor", 1);
+        // signal(SIGCHLD, SIG_DFL);
+        // signal(SIGHUP, SIG_DFL);
+        // signal(SIGINT, SIG_DFL);
+        // signal(SIGQUIT, SIG_DFL);
+        // signal(SIGTERM, SIG_DFL);
+        // signal(SIGALRM, SIG_DFL);
+
+        macro_rules! unsetenv {
+            ($name:expr) => {
+                libc::unsetenv($name.as_ptr() as *const libc::c_char);
+            };
+        }
+
+        macro_rules! setenv {
+            ($name:expr, $value:expr) => {
+                libc::setenv($name.as_ptr() as *const libc::c_char, $value, 1)
+            };
+        }
+
+        unsetenv!("COLUMNS");
+        unsetenv!("LINES");
+        unsetenv!("TERMCAP");
+        setenv!("LOGNAME", (*pw).pw_name);
+        setenv!("USER", (*pw).pw_name);
+        setenv!("SHELL", sh);
+        setenv!("HOME", (*pw).pw_dir);
+        setenv!("TERM", "xterm-256color".as_ptr() as *const libc::c_char);
+
+        println!("Exec: {:?} with args: {:?}", sh, args);
+        libc::execvp(sh, args.as_ptr());
+        libc::_exit(1);
+    }
 }
