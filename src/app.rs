@@ -26,7 +26,7 @@ use crate::macros::macs::include_font;
 use crate::renderers::{self, TextRenderer};
 use crate::terminal::{IS_TRUECOL, Term, twrite_aborted};
 use crate::text_manager::TermGlyph;
-use crate::win::{TermWindow, WinMode};
+use crate::win::WinMode;
 
 pub struct AppState {
     gl_surface: glutin::surface::Surface<glutin::surface::WindowSurface>,
@@ -44,7 +44,6 @@ pub struct App<'a> {
     conf_font_size_px: u32,
 
     term: Term,
-    win: TermWindow,
     ttyfd: i32,
     rfd: libc::fd_set,
 }
@@ -52,7 +51,6 @@ pub struct App<'a> {
 impl<'a> App<'a> {
     pub fn new(
         term: Term,
-        win: TermWindow,
         template: ConfigTemplateBuilder,
         display_builder: DisplayBuilder,
     ) -> Self {
@@ -79,7 +77,6 @@ impl<'a> App<'a> {
             conf_font_size_px: 16,
 
             term,
-            win,
             ttyfd,
             rfd: unsafe { std::mem::zeroed() },
         }
@@ -92,7 +89,7 @@ impl<'a> App<'a> {
     }
 
     pub fn kpress(&mut self, event: KeyEvent) {
-        if self.win.mode.contains(WinMode::MODE_KBDLOCK) {
+        if self.term.win.mode.contains(WinMode::MODE_KBDLOCK) {
             return;
         }
 
@@ -163,7 +160,7 @@ impl<'a> App<'a> {
         // TODO: if (len == 1 && e->state & Mod1Mask)
         if len == 1 && MOD1 {
             println!("Single character input: {}", buffer[0] as char);
-            if self.win.mode.contains(WinMode::MODE_8BIT) || true {
+            if self.term.win.mode.contains(WinMode::MODE_8BIT) || true {
                 println!("8-bit mode enabled, treating input as 8-bit character");
                 if buffer[0] < 0o177 {
                     let c = buffer[0] | 0x80;
@@ -182,7 +179,7 @@ impl<'a> App<'a> {
     pub fn cmessage(&mut self) {}
 
     pub fn resize(&mut self, size: PhysicalSize<u32>) {
-        if size.width == self.win.w && size.height == self.win.h {
+        if size.width == self.term.win.w && size.height == self.term.win.h {
             return;
         }
 
@@ -235,34 +232,35 @@ impl<'a> App<'a> {
     }
 
     fn cresize(&mut self, width: u32, height: u32) {
+        let term = &mut self.term;
+
         if width != 0 {
-            self.win.w = width;
+            term.win.w = width;
         }
 
         if height != 0 {
-            self.win.h = height;
+            term.win.h = height;
         }
 
         // TODO:
         let borderpx = 0;
-        let mut col = (self.win.w - 2 * borderpx) / self.win.cw;
-        let mut row = (self.win.h - 2 * borderpx) / self.win.ch;
+        let mut col = (term.win.w - 2 * borderpx) / term.win.cw;
+        let mut row = (term.win.h - 2 * borderpx) / term.win.ch;
 
         col = col.max(2);
         row = row.max(1);
 
-        self.win.hborderpx =
-            ((self.win.w - col * self.win.cw) as f64 * super::config::HALIGN) as u32;
+        term.win.hborderpx =
+            ((term.win.w - col * term.win.cw) as f64 * super::config::HALIGN) as u32;
 
-        self.win.vborderpx =
-            ((self.win.h - row * self.win.ch) as f64 * super::config::VALIGN) as u32;
+        term.win.vborderpx =
+            ((term.win.h - row * term.win.ch) as f64 * super::config::VALIGN) as u32;
 
-        self.term.state.tresize(col as usize, row as usize);
+        term.state.tresize(col as usize, row as usize);
 
         // xresize(col, row);
 
-        self.term
-            .ttyresize(self.win.tw as usize, self.win.th as usize);
+        term.ttyresize(term.win.tw as usize, term.win.th as usize);
     }
 
     pub fn visibility(&mut self) {}
@@ -327,7 +325,7 @@ impl<'a> App<'a> {
     }
 
     fn xstartdraw(&self) -> bool {
-        return self.win.mode.contains(WinMode::MODE_VISIBLE);
+        return self.term.win.mode.contains(WinMode::MODE_VISIBLE);
     }
 
     fn drawregion(&mut self, x1: i32, y1: i32, x2: usize, y2: usize) {
@@ -487,7 +485,7 @@ impl<'a> ApplicationHandler for App<'a> {
 
         self.gl = Some(Rc::new(gl));
 
-        self.win.mode.insert(WinMode::MODE_VISIBLE);
+        self.term.win.mode.insert(WinMode::MODE_VISIBLE);
 
         // FontRegistry must outlive TextRenderer
         self.text_renderer.get_or_insert_with(|| unsafe {
@@ -506,8 +504,8 @@ impl<'a> ApplicationHandler for App<'a> {
         });
 
         let font_size = self.text_renderer.as_ref().unwrap().font_size();
-        self.win.cw = font_size.width as u32;
-        self.win.ch = font_size.height as u32;
+        self.term.win.cw = font_size.width as u32;
+        self.term.win.ch = font_size.height as u32;
 
         self.quad_renderer.get_or_insert_with(|| unsafe {
             renderers::QuadRenderer::new(
@@ -548,7 +546,7 @@ impl<'a> ApplicationHandler for App<'a> {
 
             let ttyin = libc::FD_ISSET(self.ttyfd, &mut self.rfd);
 
-            if ttyin || unsafe { twrite_aborted } {
+            if ttyin || twrite_aborted {
                 self.term.ttyread();
             }
 

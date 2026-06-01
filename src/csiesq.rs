@@ -112,8 +112,7 @@ impl CSIEscape {
         }
     }
 
-    pub fn handle(&mut self, term: &mut TermState, win: *mut TermWindow) {
-        let win = unsafe { &mut *win };
+    pub fn handle(&mut self, term: &mut TermState, win: &mut TermWindow) {
         let maxcol = term.col;
 
         let unknown = || {

@@ -80,17 +80,14 @@ pub struct Term {
     pub strescseq: StrEscape,
     pub csiescseq: CSIEscape,
     esc: EscapeState,
-    win: *mut TermWindow,
+    pub win: TermWindow,
     // HACK: NEED TO REMOVE THIS ASAP
     pub draw: Option<Box<dyn FnMut()>>,
 }
 
 impl Term {
-    pub fn new(col: usize, row: usize, win: *mut TermWindow) -> Self {
-        let mut term = Term {
-            win,
-            ..Default::default()
-        };
+    pub fn new(col: usize, row: usize) -> Self {
+        let mut term = Self::default();
 
         term.state.tresize(col, row);
         term.state.treset();
@@ -857,9 +854,7 @@ impl Term {
     }
 
     fn csihandle(&mut self) {
-        let win_ptr: *mut TermWindow = self.win;
-
-        self.csiescseq.handle(&mut self.state, win_ptr);
+        self.csiescseq.handle(&mut self.state, &mut self.win);
     }
 
     fn csireset(&mut self) {
@@ -984,17 +979,16 @@ impl Term {
     }
 
     // TODO:
-    fn xsetmode(&mut self, set: i32, _mode: WinMode) {
-        let win = unsafe { &mut *self.win };
-        let mode = win.mode;
+    fn xsetmode(&mut self, set: i32, flags: WinMode) {
+        let mode = self.win.mode;
 
         if set != 0 {
-            win.mode.insert(mode);
+            self.win.mode.insert(flags);
         } else {
-            win.mode.remove(mode);
+            self.win.mode.remove(flags);
         }
 
-        if (win.mode & WinMode::MODE_REVERSE) != (mode & WinMode::MODE_REVERSE) {
+        if (self.win.mode & WinMode::MODE_REVERSE) != (mode & WinMode::MODE_REVERSE) {
             self.redraw();
         }
     }

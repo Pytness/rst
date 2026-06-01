@@ -29,9 +29,7 @@ fn main() {
     let cols = 80;
     let rows = 24;
 
-    let mut win = TermWindow::default();
-
-    let term = Term::new(cols, rows, &mut win as *mut TermWindow);
+    let term = Term::new(cols, rows);
 
     // xinit
 
@@ -43,7 +41,7 @@ fn main() {
 
     let display_builder = DisplayBuilder::new().with_window_attributes(Some(window_attributes()));
 
-    let mut app = App::new(term, win, template, display_builder);
+    let mut app = App::new(term, template, display_builder);
 
     match event_loop.run_app(&mut app) {
         Ok(_) => (),
