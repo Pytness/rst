@@ -146,8 +146,8 @@ impl CSIEscape {
                     0 => state.tdump(),
                     1 => state.tdumpline(state.c.y),
                     2 => state.tdumpsel(),
-                    4 => state.mode.remove(TermMode::MODE_PRINT),
-                    5 => state.mode.insert(TermMode::MODE_PRINT),
+                    4 => state.mode.remove(TermMode::Print),
+                    5 => state.mode.insert(TermMode::Print),
                     _ => {}
                 }
             }
@@ -413,7 +413,7 @@ impl CSIEscape {
 
             // DECSC -- Save Cursor Position (ANIS.SYS)
             b's' => {
-                state.tcursor(CursorMovement::CURSOR_SAVE);
+                state.tcursor(CursorMovement::CursorSave);
             }
 
             // DECRC -- Restore cursor position (ANIS.SYS)
@@ -421,7 +421,7 @@ impl CSIEscape {
                 if self.private {
                     unknown();
                 } else {
-                    state.tcursor(CursorMovement::CURSOR_LOAD);
+                    state.tcursor(CursorMovement::CursorLoad);
                 }
             }
 

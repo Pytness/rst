@@ -9,40 +9,40 @@ const MAX_IMAGE_RECTS: usize = 20;
 type Milliseconds = i64;
 
 enum ScaleMode {
-    SCALE_MODE_UNSET = 0,
+    Unset = 0,
     /// Stretch or shrink the image to fill the box, ignoring aspect ratio.
-    SCALE_MODE_FILL = 1,
+    Fill = 1,
     /// Preserve aspect ratio and fit to width or to height so that the
     /// whole image is visible.
-    SCALE_MODE_CONTAIN = 2,
+    Contain = 2,
     /// Do not scale. The image may be cropped if the box is too small.
-    SCALE_MODE_NONE = 3,
+    None = 3,
     /// Do not scale, unless the box is too small, in which case the image
     /// will be shrunk like with `SCALE_MODE_CONTAIN`.
-    SCALE_MODE_NONE_OR_CONTAIN = 4,
+    NoneOrContain = 4,
 }
 
 enum AnimationState {
-    ANIMATION_STATE_UNSET = 0,
+    Unset = 0,
     /// The animation is stopped. Display the current frame, but don't
     /// advance to the next one.
-    ANIMATION_STATE_STOPPED = 1,
+    Stopped = 1,
     /// Run the animation to then end, then wait for the next frame.
-    ANIMATION_STATE_LOADING = 2,
+    Loading = 2,
     /// Run the animation in a loop.
-    ANIMATION_STATE_LOOPING = 3,
+    Looping = 3,
 }
 
 /// The status of an image. Each image uploaded to the terminal is cached on
 /// disk, then it is loaded to ram when needed.
 enum ImageStatus {
-    STATUS_UNINITIALIZED = 0,
-    STATUS_UPLOADING = 1,
-    STATUS_UPLOADING_ERROR = 2,
-    STATUS_UPLOADING_SUCCESS = 3,
-    STATUS_RAM_LOADING_ERROR = 4,
-    STATUS_RAM_LOADING_IN_PROGRESS = 5,
-    STATUS_RAM_LOADING_SUCCESS = 6,
+    Uninitialized = 0,
+    Uploading = 1,
+    UploadingError = 2,
+    UploadingSuccess = 3,
+    RamLoadingError = 4,
+    RamLoadingInProgress = 5,
+    RamLoadingSuccess = 6,
 }
 
 const IMAGE_STATUS_STRINGS: [&str; 6] = [
@@ -55,11 +55,11 @@ const IMAGE_STATUS_STRINGS: [&str; 6] = [
 ];
 
 enum ImageUploadingFailure {
-    ERROR_OVER_SIZE_LIMIT = 1,
-    ERROR_CANNOT_OPEN_CACHED_FILE = 2,
-    ERROR_UNEXPECTED_SIZE = 3,
-    ERROR_CANNOT_COPY_FILE = 4,
-    ERROR_CANNOT_OPEN_SHM = 5,
+    ErrorOverSizeLimit = 1,
+    ErrorCannotOpenCachedFile = 2,
+    ErrorUnexpectedSize = 3,
+    ErrorCannotCopyFile = 4,
+    ErrorCannotOpenShm = 5,
 }
 
 const IMAGE_UPLOADING_FAILURE_STRINGS: [&str; 6] = [

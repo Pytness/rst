@@ -1,26 +1,17 @@
-use std::ops::{Deref, DerefMut};
 use std::ptr::{null, null_mut};
 
 use crate::BETWEEN;
 use crate::config::VTIDEN;
 use crate::csiesq::{CSIEscape, STR_TERM_ST};
-use crate::glyph::Glyph;
-use crate::term_state::{
-    CMDFD, CursorMovement, DECOR_DEFAULT_COLOR, IOFD, PID, SU, TermMode, TermState,
-};
-pub use crate::term_state::{IS_TRUECOL, twrite_aborted};
+use crate::term_state::{CMDFD, CursorMovement, IOFD, PID, SU, TermMode, TermState};
+pub use crate::term_state::{IS_TRUECOL, TWRITE_ABORTED};
 use crate::win::{TermWindow, WinMode};
 use bitflags::bitflags;
-use unicode_width::UnicodeWidthChar;
 
 use crate::term_state::Charset;
 
 const STR_BUF_SIZ: usize = 128 * 4;
 const UTF_SIZ: usize = 4;
-
-fn TRUECOLOR(r: u8, g: u8, b: u8) -> u32 {
-    1 << 24 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
-}
 
 /// Holds the current STR/DCS/OSC/APC/PM escape sequence being accumulated.
 #[derive(Debug)]
@@ -46,16 +37,16 @@ impl Default for StrEscape {
     }
 }
 
-fn ISCONTROLC0(c: char) -> bool {
+fn is_control_c0(c: char) -> bool {
     BETWEEN!(c, '\0', '\u{1F}') || c == '\u{7F}'
 }
 
-fn ISCONTROLC1(c: char) -> bool {
+fn is_control_c1(c: char) -> bool {
     BETWEEN!(c, '\u{80}', '\u{9F}')
 }
 
-fn ISCONTROL(c: char) -> bool {
-    ISCONTROLC0(c) || ISCONTROLC1(c)
+fn is_control(c: char) -> bool {
+    is_control_c0(c) || is_control_c1(c)
 }
 
 bitflags! {
@@ -105,7 +96,7 @@ impl Term {
         let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
 
         if let Some(out) = out {
-            self.state.mode.insert(TermMode::MODE_PRINT);
+            self.state.mode.insert(TermMode::Print);
             unsafe {
                 IOFD = if out == "-" {
                     1
@@ -215,11 +206,11 @@ impl Term {
     }
 
     pub fn ttywrite(&mut self, buffer: &[u8], len: usize, may_echo: bool) {
-        if may_echo && self.state.mode.contains(TermMode::MODE_ECHO) {
+        if may_echo && self.state.mode.contains(TermMode::Echo) {
             self.twrite(&buffer, len, true);
         }
 
-        if !self.state.mode.contains(TermMode::MODE_CRLF) {
+        if !self.state.mode.contains(TermMode::Crlf) {
             self.ttywriteraw_pty(buffer, len);
             return;
         }
@@ -233,15 +224,15 @@ impl Term {
         let mut u: char = '\0';
         let su0 = unsafe { SU };
 
-        unsafe { twrite_aborted = false };
+        unsafe { TWRITE_ABORTED = false };
 
         while i < buflen {
-            if self.state.mode.contains(TermMode::MODE_SIXEL)
+            if self.state.mode.contains(TermMode::Sixel)
             /* TODO: sixel_st.state != PS_ESC */
             {
                 // charsize = sixel_parser_parse(&sixel_st, (const unsigned char *)buf + n, buflen - n);
                 // continue;
-            } else if self.state.mode.contains(TermMode::MODE_UTF8) {
+            } else if self.state.mode.contains(TermMode::Utf8) {
                 // FIXME: assumes all chars are properly encoded
                 for utf_len in 0..4 {
                     let end = (i + utf_len + 1).min(buflen);
@@ -261,11 +252,11 @@ impl Term {
             }
 
             if su0 != 0 && unsafe { SU == 0 } {
-                unsafe { twrite_aborted = true };
+                unsafe { TWRITE_ABORTED = true };
                 break; // ESU - allow rendering before a new BSU
             }
 
-            if show_ctrl && ISCONTROL(u as char) {
+            if show_ctrl && is_control(u as char) {
                 if u as u8 & 0x80 != 0 {
                     u = (u as u8 & 0x7F) as char;
                     self.tputc('^');
@@ -372,14 +363,14 @@ impl Term {
 
     // TODO: refactor this
     pub fn tputc(&mut self, u: char) {
-        let control = ISCONTROL(u);
-        let len = if (u as u32) < 127 && !self.state.mode.contains(TermMode::MODE_UTF8) {
+        let control = is_control(u);
+        let len = if (u as u32) < 127 && !self.state.mode.contains(TermMode::Utf8) {
             1
         } else {
             u.len_utf8()
         };
 
-        if self.state.mode.contains(TermMode::MODE_PRINT) {
+        if self.state.mode.contains(TermMode::Print) {
             let mut buf = [0u8; 4];
             u.encode_utf8(&mut buf);
 
@@ -395,7 +386,7 @@ impl Term {
         if self.esc.contains(EscapeState::ESC_STR) {
             let is_control = match u as u8 {
                 0o7 | 0o30 | 0o32 | 0o33 => true,
-                _ => ISCONTROLC1(u),
+                _ => is_control_c1(u),
             };
 
             if is_control {
@@ -438,7 +429,7 @@ impl Term {
         // check_control_code:
         if control {
             /* in UTF-8 mode ignore handling C1 control characters */
-            if self.state.mode.contains(TermMode::MODE_UTF8) && ISCONTROLC1(u) {
+            if self.state.mode.contains(TermMode::Utf8) && is_control_c1(u) {
                 return;
             }
 
@@ -532,7 +523,7 @@ impl Term {
             0x0B  | // VT (\v)
             b'\n'   // LF (\n)
             => {
-                self.state.tnewline(self.state.mode.contains(TermMode::MODE_CRLF));
+                self.state.tnewline(self.state.mode.contains(TermMode::Crlf));
             }
 
             // BEL (\a)
@@ -693,8 +684,8 @@ impl Term {
 
     fn tdefutf8(&mut self, u: char) {
         match u {
-            'G' => self.state.mode.insert(TermMode::MODE_UTF8),
-            '@' => self.state.mode.remove(TermMode::MODE_UTF8),
+            'G' => self.state.mode.insert(TermMode::Utf8),
+            '@' => self.state.mode.remove(TermMode::Utf8),
             _ => {}
         }
     }
@@ -710,7 +701,7 @@ impl Term {
         // ];
 
         const CS: &[char] = &['0', 'B'];
-        const VCSMAP: &[Charset] = &[Charset::CS_GRAPHIC0, Charset::CS_USA];
+        const VCSMAP: &[Charset] = &[Charset::Graphic0, Charset::Usa];
 
         if let Some(idx) = CS.iter().position(|&c| c == u) {
             self.state.trantbl[self.state.icharset as usize] = VCSMAP[idx];
@@ -805,23 +796,23 @@ impl Term {
                 self.state.treset();
                 self.resettitle();
                 self.xloadcols();
-                self.xsetmode(0, WinMode::MODE_HIDE);
+                self.xsetmode(0, WinMode::Hide);
             }
             // DECKPAM – application keypad
             '=' => {
-                self.xsetmode(1, WinMode::MODE_APPKEYPAD);
+                self.xsetmode(1, WinMode::AppKeypad);
             }
             // DECPNM -- Normal keypad
             '>' => {
-                self.xsetmode(0, WinMode::MODE_APPKEYPAD);
+                self.xsetmode(0, WinMode::AppKeypad);
             }
             // DECSC -- Save Cursor
             '7' => {
-                self.state.tcursor(CursorMovement::CURSOR_SAVE);
+                self.state.tcursor(CursorMovement::CursorSave);
             }
             // DESRC -- Restore Cursor
             '8' => {
-                self.state.tcursor(CursorMovement::CURSOR_LOAD);
+                self.state.tcursor(CursorMovement::CursorLoad);
             }
             // ST -- String terminator
             '\\' => {
@@ -876,7 +867,7 @@ impl Term {
         unsafe {
             // append read bytes to unprocessed bytes
             println!("ttyread about to read");
-            ret = if twrite_aborted {
+            ret = if TWRITE_ABORTED {
                 1
             } else {
                 let b = &raw mut BUF as *mut libc::c_void;
@@ -893,7 +884,7 @@ impl Term {
                 }
 
                 _ => {
-                    BUF_WRITTEN += if twrite_aborted { 0 } else { ret as usize };
+                    BUF_WRITTEN += if TWRITE_ABORTED { 0 } else { ret as usize };
 
                     if ALREADY_PROCESSING {
                         return ret as usize;
@@ -978,7 +969,7 @@ impl Term {
             self.win.mode.remove(flags);
         }
 
-        if (self.win.mode & WinMode::MODE_REVERSE) != (mode & WinMode::MODE_REVERSE) {
+        if (self.win.mode & WinMode::Reverse) != (mode & WinMode::Reverse) {
             self.redraw();
         }
     }

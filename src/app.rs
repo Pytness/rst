@@ -24,7 +24,7 @@ use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::macros::macs::include_font;
 use crate::renderers::{self, TextRenderer};
-use crate::terminal::{IS_TRUECOL, Term, twrite_aborted};
+use crate::terminal::{IS_TRUECOL, TWRITE_ABORTED, Term};
 use crate::text_manager::TermGlyph;
 use crate::win::WinMode;
 
@@ -89,7 +89,7 @@ impl<'a> App<'a> {
     }
 
     pub fn kpress(&mut self, event: KeyEvent) {
-        if self.term.win.mode.contains(WinMode::MODE_KBDLOCK) {
+        if self.term.win.mode.contains(WinMode::KbdLock) {
             return;
         }
 
@@ -160,7 +160,7 @@ impl<'a> App<'a> {
         // TODO: if (len == 1 && e->state & Mod1Mask)
         if len == 1 && MOD1 {
             println!("Single character input: {}", buffer[0] as char);
-            if self.term.win.mode.contains(WinMode::MODE_8BIT) || true {
+            if self.term.win.mode.contains(WinMode::EightBit) || true {
                 println!("8-bit mode enabled, treating input as 8-bit character");
                 if buffer[0] < 0o177 {
                     let c = buffer[0] | 0x80;
@@ -325,7 +325,7 @@ impl<'a> App<'a> {
     }
 
     fn xstartdraw(&self) -> bool {
-        return self.term.win.mode.contains(WinMode::MODE_VISIBLE);
+        return self.term.win.mode.contains(WinMode::Visible);
     }
 
     fn drawregion(&mut self, x1: i32, y1: i32, x2: usize, y2: usize) {
@@ -485,7 +485,7 @@ impl<'a> ApplicationHandler for App<'a> {
 
         self.gl = Some(Rc::new(gl));
 
-        self.term.win.mode.insert(WinMode::MODE_VISIBLE);
+        self.term.win.mode.insert(WinMode::Visible);
 
         // FontRegistry must outlive TextRenderer
         self.text_renderer.get_or_insert_with(|| unsafe {
@@ -546,7 +546,7 @@ impl<'a> ApplicationHandler for App<'a> {
 
             let ttyin = libc::FD_ISSET(self.ttyfd, &mut self.rfd);
 
-            if ttyin || twrite_aborted {
+            if ttyin || TWRITE_ABORTED {
                 self.term.ttyread();
             }
 

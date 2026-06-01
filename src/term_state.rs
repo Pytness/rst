@@ -1,5 +1,3 @@
-use std::ptr::null_mut;
-
 use bitflags::bitflags;
 use unicode_width::UnicodeWidthChar;
 
@@ -13,7 +11,7 @@ pub static mut IOFD: i32 = 0;
 pub static mut CMDFD: i32 = 0;
 pub static mut PID: i32 = 0;
 pub static mut SU: usize = 0;
-pub static mut twrite_aborted: bool = false;
+pub static mut TWRITE_ABORTED: bool = false;
 
 pub const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 pub const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
@@ -30,44 +28,44 @@ pub fn IS_TRUECOL(c: u32) -> bool {
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
     pub struct TermMode: u32 {
-        const MODE_WRAP         = 1 << 0;
-        const MODE_INSERT       = 1 << 1;
-        const MODE_ALTSCREEN    = 1 << 2;
-        const MODE_CRLF         = 1 << 3;
-        const MODE_ECHO         = 1 << 4;
-        const MODE_PRINT        = 1 << 5;
-        const MODE_UTF8         = 1 << 6;
-        const MODE_SIXEL        = 1 << 7;
-        const MODE_SIXEL_CUR_RT = 1 << 8;
-        const MODE_SIXEL_SDM    = 1 << 9;
+        const Wrap         = 1 << 0;
+        const Insert       = 1 << 1;
+        const Altscreen    = 1 << 2;
+        const Crlf         = 1 << 3;
+        const Echo         = 1 << 4;
+        const Print        = 1 << 5;
+        const Utf8         = 1 << 6;
+        const Sixel        = 1 << 7;
+        const SixelCurRT   = 1 << 8;
+        const SixelSDM     = 1 << 9;
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum CursorMovement {
-    CURSOR_SAVE,
-    CURSOR_LOAD,
+    CursorSave = 0,
+    CursorLoad = 1,
 }
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
     pub struct CursorState: u32 {
-        const CURSOR_DEFAULT  = 0;
-        const CURSOR_WRAPNEXT = 1;
-        const CURSOR_ORIGIN   = 2;
+        const Default  = 0;
+        const WrapNext = 1;
+        const Origin   = 2;
     }
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Charset {
+pub enum Charset {
     #[default]
-    CS_GRAPHIC0 = 0,
-    CS_GRAPHIC1 = 1,
-    CS_UK = 2,
-    CS_USA = 3,
-    CS_MULTI = 4,
-    CS_GER = 5,
-    CS_FIN = 6,
+    Graphic0 = 0,
+    Graphic1 = 1,
+    Uk = 2,
+    Usa = 3,
+    Multi = 4,
+    Ger = 5,
+    Fin = 6,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -79,17 +77,17 @@ pub struct Vec2 {
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionMode {
     #[default]
-    SEL_IDLE = 0,
-    SEL_EMPTY = 1,
-    SEL_READY = 2,
-    SEL_REMOVED = 3,
+    Idle = 0,
+    Empty = 1,
+    Ready = 2,
+    Removed = 3,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionType {
     #[default]
-    SEL_REGULAR = 1,
-    SEL_RECTANGULAR = 2,
+    Regular = 1,
+    Rectangular = 2,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -198,7 +196,7 @@ impl TermState {
     pub fn tcursor(&mut self, mode: CursorMovement) {
         static mut C: [Option<TCursor>; 2] = [None, None];
 
-        let alt = if self.mode.contains(TermMode::MODE_ALTSCREEN) {
+        let alt = if self.mode.contains(TermMode::Altscreen) {
             1
         } else {
             0
@@ -206,10 +204,10 @@ impl TermState {
 
         unsafe {
             match mode {
-                CursorMovement::CURSOR_SAVE => {
+                CursorMovement::CursorSave => {
                     C[alt] = Some(self.c);
                 }
-                CursorMovement::CURSOR_LOAD => {
+                CursorMovement::CursorLoad => {
                     if let Some(c) = C[alt] {
                         self.c = c;
                         self.tmoveto(c.x, c.y);
@@ -235,14 +233,14 @@ impl TermState {
 
         self.top = 0;
         self.bot = self.row - 1;
-        self.mode = TermMode::MODE_WRAP | TermMode::MODE_UTF8;
+        self.mode = TermMode::Wrap | TermMode::Utf8;
 
-        self.trantbl = [Charset::CS_USA; 4];
+        self.trantbl = [Charset::Usa; 4];
         self.charset = 0;
 
         for _ in 0..2 {
             self.tmoveto(0, 0);
-            self.tcursor(CursorMovement::CURSOR_SAVE);
+            self.tcursor(CursorMovement::CursorSave);
             self.tclearregion(0, 0, self.col - 1, self.row - 1);
             self.tdeleteimages();
             self.tswapscreen();
@@ -250,13 +248,13 @@ impl TermState {
     }
 
     pub fn tisaltscr(&self) -> bool {
-        self.mode.contains(TermMode::MODE_ALTSCREEN)
+        self.mode.contains(TermMode::Altscreen)
     }
 
     pub fn tswapscreen(&mut self) {
         std::mem::swap(&mut self.line, &mut self.alt);
         std::mem::swap(&mut self.images, &mut self.images_alt);
-        self.mode.toggle(TermMode::MODE_ALTSCREEN);
+        self.mode.toggle(TermMode::Altscreen);
         self.tfulldirt();
     }
 
@@ -325,8 +323,7 @@ impl TermState {
     pub fn selscroll(&mut self, orig: usize, n: isize) {
         let sel = &mut self.sel;
 
-        if sel.mode == SelectionMode::SEL_REMOVED
-            || sel.alt != self.mode.contains(TermMode::MODE_ALTSCREEN)
+        if sel.mode == SelectionMode::Removed || sel.alt != self.mode.contains(TermMode::Altscreen)
         {
             return;
         }
@@ -366,7 +363,7 @@ impl TermState {
     }
 
     pub fn tmoveato(&mut self, x: usize, y: usize) {
-        let origin = if self.c.state.contains(CursorState::CURSOR_ORIGIN) {
+        let origin = if self.c.state.contains(CursorState::Origin) {
             self.top
         } else {
             0
@@ -376,13 +373,13 @@ impl TermState {
     }
 
     pub fn tmoveto(&mut self, x: usize, y: usize) {
-        let (miny, maxy) = if self.c.state.contains(CursorState::CURSOR_ORIGIN) {
+        let (miny, maxy) = if self.c.state.contains(CursorState::Origin) {
             (self.top, self.bot)
         } else {
             (0, self.row - 1)
         };
 
-        self.c.state.remove(CursorState::CURSOR_WRAPNEXT);
+        self.c.state.remove(CursorState::WrapNext);
         self.c.x = x.max(0).min(self.col - 1);
         self.c.y = y.max(miny).min(maxy);
     }
@@ -403,7 +400,7 @@ impl TermState {
 
         // The table is proudly stolen from rxvt (and from st)
 
-        if self.trantbl[self.charset] == Charset::CS_GRAPHIC0 && BETWEEN!(u, 'A', '~') {
+        if self.trantbl[self.charset] == Charset::Graphic0 && BETWEEN!(u, 'A', '~') {
             self.line[y][x].u = VT100_0[(u as usize) - 0x41];
         }
 
@@ -566,7 +563,7 @@ impl TermState {
 
         // scroll both screens independently
         if row < self.row {
-            self.tcursor(CursorMovement::CURSOR_SAVE);
+            self.tcursor(CursorMovement::CursorSave);
             self.tsetscroll(0, self.row - 1);
 
             for _ in 0..2 {
@@ -579,7 +576,7 @@ impl TermState {
                 }
 
                 self.tswapscreen();
-                self.tcursor(CursorMovement::CURSOR_LOAD);
+                self.tcursor(CursorMovement::CursorLoad);
             }
         }
 
@@ -629,7 +626,7 @@ impl TermState {
 
         for _ in 0..2 {
             self.tmoveto(self.c.x, self.c.y);
-            self.tcursor(CursorMovement::CURSOR_SAVE);
+            self.tcursor(CursorMovement::CursorSave);
 
             if mincol < col && 0 < minrow {
                 self.tclearregion(mincol, 0, col - 1, minrow - 1);
@@ -678,7 +675,7 @@ impl TermState {
     }
 
     fn selclear(&mut self) {
-        if self.sel.mode == SelectionMode::SEL_REMOVED {
+        if self.sel.mode == SelectionMode::Removed {
             return;
         }
 
@@ -689,7 +686,7 @@ impl TermState {
     fn selnormalize(&mut self) {
         let sel = &mut self.sel;
 
-        if sel.type_ == SelectionType::SEL_REGULAR && sel.ob.y != sel.oe.y {
+        if sel.type_ == SelectionType::Regular && sel.ob.y != sel.oe.y {
             sel.nb.x = if sel.ob.y < sel.oe.y {
                 sel.ob.x
             } else {
@@ -712,7 +709,7 @@ impl TermState {
         // selsnap(&sel.ne.x, &sel.ne.y, +1);
 
         /* expand selection over line breaks */
-        if sel.type_ == SelectionType::SEL_RECTANGULAR {
+        if sel.type_ == SelectionType::Rectangular {
             return;
         }
 
@@ -733,7 +730,7 @@ impl TermState {
     }
 
     fn selremove(&mut self) {
-        self.sel.mode = SelectionMode::SEL_REMOVED;
+        self.sel.mode = SelectionMode::Removed;
     }
 
     fn tlinelen(&self, y: usize) -> usize {
@@ -767,15 +764,15 @@ impl TermState {
         let sel = &self.sel;
 
         // sel.ob.x == -1 => SelectionMode::SEL_REMOVED
-        if sel.mode == SelectionMode::SEL_EMPTY || sel.ob.x == -1 {
+        if sel.mode == SelectionMode::Empty || sel.ob.x == -1 {
             return false;
         }
 
-        if sel.alt != self.mode.contains(TermMode::MODE_ALTSCREEN) {
+        if sel.alt != self.mode.contains(TermMode::Altscreen) {
             return false;
         }
 
-        if sel.type_ == SelectionType::SEL_RECTANGULAR {
+        if sel.type_ == SelectionType::Rectangular {
             return BETWEEN!(y as isize, sel.nb.y, sel.ne.y)
                 && BETWEEN!(x as isize, sel.nb.x, sel.ne.x);
         }
@@ -812,7 +809,7 @@ impl TermState {
 
     /// Write bytes directly to the pty (no echo processing).
     pub fn ttywrite_pty(&mut self, buffer: &[u8], len: usize) {
-        if !self.mode.contains(TermMode::MODE_CRLF) {
+        if !self.mode.contains(TermMode::Crlf) {
             self.ttywriteraw_pty(buffer, len);
             return;
         }
@@ -891,7 +888,7 @@ impl TermState {
     }
 
     pub fn tputc_char(&mut self, u: char) {
-        let width = if (u as u32) < 127 && !self.mode.contains(TermMode::MODE_UTF8) {
+        let width = if (u as u32) < 127 && !self.mode.contains(TermMode::Utf8) {
             1
         } else {
             u.width().unwrap_or(0)
@@ -912,7 +909,7 @@ impl TermState {
             if self.c.x == 0 {
                 gy = self.c.y - 1;
                 gx = self.col - 1;
-            } else if self.c.state.contains(CursorState::CURSOR_WRAPNEXT) {
+            } else if self.c.state.contains(CursorState::WrapNext) {
                 gy = self.c.y;
                 gx = self.c.x;
             } else {
@@ -938,15 +935,13 @@ impl TermState {
             return;
         }
 
-        if self.mode.contains(TermMode::MODE_WRAP)
-            && self.c.state.contains(CursorState::CURSOR_WRAPNEXT)
-        {
+        if self.mode.contains(TermMode::Wrap) && self.c.state.contains(CursorState::WrapNext) {
             let (cx, cy) = (self.c.x, self.c.y);
             self.line[cy][cx].mode |= GlyphAttribute::ATTR_WRAP;
             self.tnewline(true);
         }
 
-        if self.mode.contains(TermMode::MODE_INSERT) && (self.c.x + width as usize) < self.col {
+        if self.mode.contains(TermMode::Insert) && (self.c.x + width as usize) < self.col {
             let cx = self.c.x;
             let cy = self.c.y;
             let move_count = self.col - cx - width as usize;
@@ -955,7 +950,7 @@ impl TermState {
         }
 
         if self.c.x + width as usize > self.col {
-            if self.mode.contains(TermMode::MODE_WRAP) {
+            if self.mode.contains(TermMode::Wrap) {
                 self.tnewline(true);
             } else {
                 let w = width as usize;
@@ -985,7 +980,7 @@ impl TermState {
         if cx + (width as usize) < self.col {
             self.tmoveto(cx + width as usize, cy);
         } else {
-            self.c.state |= CursorState::CURSOR_WRAPNEXT;
+            self.c.state |= CursorState::WrapNext;
         }
     }
 
