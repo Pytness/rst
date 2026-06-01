@@ -417,7 +417,7 @@ impl TermState {
             self.line[y][x - 1].mode &= !GlyphAttribute::ATTR_WDUMMY;
         }
 
-        let is_classic_placeholder = tgetisclassicplaceholder(&self.line[y][x]);
+        let is_classic_placeholder = self.line[y][x].tgetisclassicplaceholder();
 
         if u == ' '
             && self.line[y][x].mode.contains(GlyphAttribute::ATTR_IMAGE)
@@ -505,13 +505,13 @@ impl TermState {
                     // holes in images, but at least we are
                     // guaranteed to restore the original text.
 
-                    if gp.mode.contains(GlyphAttribute::ATTR_IMAGE) && tgetisclassicplaceholder(gp)
+                    if gp.mode.contains(GlyphAttribute::ATTR_IMAGE) && gp.tgetisclassicplaceholder()
                     {
                         let under = gr_get_glyph_underneath_image(
-                            tgetimgid(gp),
-                            tgetimgplacementid(gp),
-                            tgetimgcol(gp),
-                            tgetimgrow(gp),
+                            gp.tgetimgid(),
+                            gp.tgetimgplacementid(),
+                            gp.tgetimgcol(),
+                            gp.tgetimgrow(),
                         );
 
                         if let Some(under) = under {
@@ -524,12 +524,12 @@ impl TermState {
 
                 gp.mode = GlyphAttribute::ATTR_IMAGE;
                 gp.u = 0 as char;
-                tsetimgrow(gp, row + 1);
-                tsetimgcol(gp, col + 1);
-                tsetimgid(gp, image_id);
-                tsetimgplacementid(gp, placement_id);
-                tsetimgdiacriticcount(gp, 3);
-                tsetisclassicplaceholder(gp, 1);
+                gp.tsetimgrow(row + 1);
+                gp.tsetimgcol(col + 1);
+                gp.tsetimgid(image_id);
+                gp.tsetimgplacementid(placement_id as u32);
+                gp.tsetimgdiacriticcount(3);
+                gp.tsetisclassicplaceholder(1);
             }
 
             if do_not_move_cursor && y == self.row - 1 {
@@ -1016,15 +1016,17 @@ impl TermState {
 
             let num = diacritic_to_num(u);
             if num != 0 && self.line[gy][gx].mode.contains(GlyphAttribute::ATTR_IMAGE) {
-                let diaccount = tgetimgdiacriticcount(&self.line[gy][gx]);
+                let diaccount = self.line[gy][gx].tgetimgdiacriticcount();
+
                 if diaccount == 0 {
-                    tsetimgrow(&mut self.line[gy][gx], num as usize);
+                    self.line[gy][gx].tsetimgrow(num as usize);
                 } else if diaccount == 1 {
-                    tsetimgcol(&mut self.line[gy][gx], num as usize);
+                    self.line[gy][gx].tsetimgcol(num as usize);
                 } else if diaccount == 2 {
-                    tsetimg4thbyteplus1(&mut self.line[gy][gx], num);
+                    self.line[gy][gx].tsetimg4thbyteplus1(num);
                 }
-                tsetimgdiacriticcount(&mut self.line[gy][gx], diaccount as i32 + 1);
+
+                self.line[gy][gx].tsetimgdiacriticcount(diaccount as i32 + 1);
             }
             self.lastc = u;
             return;
@@ -1339,66 +1341,6 @@ impl TermState {
 }
 
 // ── free helper functions ─────────────────────────────────────────────────────
-
-fn tgetimgrow(g: &Glyph) -> u32 {
-    g.u as u32 & 0x1ff
-}
-fn tgetimgcol(g: &Glyph) -> u32 {
-    (g.u as u32 >> 9) & 0x1ff
-}
-fn tgetimgid4thbyteplus1(g: &Glyph) -> u32 {
-    (g.u as u32 >> 18) & 0x1ff
-}
-fn tgetimgdiacriticcount(g: &Glyph) -> u32 {
-    (g.u as u32 >> 27) & 0x3
-}
-fn tgetisclassicplaceholder(g: &Glyph) -> bool {
-    ((g.u as usize) >> 29) & 0x1 != 0
-}
-
-fn tsetimgrow(g: &mut Glyph, row: usize) {
-    let v = (g.u as u32 & !0x1ff) | (row as u32 & 0x1ff);
-    g.u = char::from_u32(v).unwrap_or('\0');
-}
-fn tsetimgcol(g: &mut Glyph, col: usize) {
-    let v = (g.u as u32 & !(0x1ff << 9)) | ((col as u32 & 0x1ff) << 9);
-    g.u = char::from_u32(v).unwrap_or('\0');
-}
-fn tsetimg4thbyteplus1(g: &mut Glyph, byteplus1: u32) {
-    let v = (g.u as u32 & !(0x1ff << 18)) | ((byteplus1 & 0x1ff) << 18);
-    g.u = char::from_u32(v).unwrap_or('\0');
-}
-fn tsetimgdiacriticcount(g: &mut Glyph, count: i32) {
-    let v = (g.u as u32 & !(0x3 << 27)) | (((count as u32) & 0x3) << 27);
-    g.u = char::from_u32(v).unwrap_or('\0');
-}
-fn tsetisclassicplaceholder(g: &mut Glyph, is_classic: i32) {
-    let v = (g.u as u32 & !(0x1 << 29)) | (((is_classic as u32) & 0x1) << 29);
-    g.u = char::from_u32(v).unwrap_or('\0');
-}
-fn tgetimgid(g: &Glyph) -> u32 {
-    let mut msb = tgetimgid4thbyteplus1(g);
-    if msb != 0 {
-        msb -= 1;
-    }
-    (msb << 24) | (g.fg & 0xFFFFFF)
-}
-fn tsetimgid(g: &mut Glyph, id: u32) {
-    g.fg = (id & 0xFFFFFF) | (1 << 24);
-    tsetimg4thbyteplus1(g, ((id >> 24) & 0xFF) + 1);
-}
-fn tgetimgplacementid(g: &Glyph) -> u32 {
-    if tgetdecorcolor(g) == DECOR_DEFAULT_COLOR {
-        return 0;
-    }
-    g.decoration as u32 & 0xFFFFFF
-}
-fn tgetdecorcolor(_g: &Glyph) -> u32 {
-    todo!()
-}
-fn tsetimgplacementid(_g: &Glyph, _placement_id: usize) {
-    todo!()
-}
 
 fn diacritic_to_num(u: char) -> u32 {
     let code = u as u32;

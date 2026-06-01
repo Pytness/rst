@@ -1,5 +1,7 @@
 use bitflags::bitflags;
 
+use crate::term_state::DECOR_DEFAULT_COLOR;
+
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
     pub struct GlyphAttribute: u32 {
@@ -22,22 +24,6 @@ bitflags! {
         const ATTR_SIXEL = 1 << 16;
 
     }
-}
-
-pub enum SelectionMode {
-    SelIdle,
-    SelEmpty,
-    SelReady,
-}
-
-pub enum SelectionType {
-    SelRegular,
-    SelRectangular,
-}
-
-pub enum SelectionSnap {
-    SnapWord,
-    SnapLine,
 }
 
 pub enum UnderlineStyle {
@@ -66,6 +52,86 @@ impl Default for Glyph {
             bg: 0,
             decoration: 0,
         }
+    }
+}
+
+impl Glyph {
+    pub fn tgetimgrow(&self) -> u32 {
+        self.u as u32 & 0x1ff
+    }
+
+    pub fn tgetimgcol(&self) -> u32 {
+        (self.u as u32 >> 9) & 0x1ff
+    }
+
+    pub fn tgetimgid4thbyteplus1(&self) -> u32 {
+        (self.u as u32 >> 18) & 0x1ff
+    }
+
+    pub fn tgetimgdiacriticcount(&self) -> u32 {
+        (self.u as u32 >> 27) & 0x3
+    }
+
+    pub fn tgetisclassicplaceholder(&self) -> bool {
+        ((self.u as usize) >> 29) & 0x1 != 0
+    }
+
+    pub fn tsetimgrow(&mut self, row: usize) {
+        let v = (self.u as u32 & !0x1ff) | (row as u32 & 0x1ff);
+        self.u = char::from_u32(v).unwrap_or('\0');
+    }
+
+    pub fn tsetimgcol(&mut self, col: usize) {
+        let v = (self.u as u32 & !(0x1ff << 9)) | ((col as u32 & 0x1ff) << 9);
+        self.u = char::from_u32(v).unwrap_or('\0');
+    }
+
+    pub fn tsetimg4thbyteplus1(&mut self, byteplus1: u32) {
+        let v = (self.u as u32 & !(0x1ff << 18)) | ((byteplus1 & 0x1ff) << 18);
+        self.u = char::from_u32(v).unwrap_or('\0');
+    }
+
+    pub fn tsetimgdiacriticcount(&mut self, count: i32) {
+        let v = (self.u as u32 & !(0x3 << 27)) | (((count as u32) & 0x3) << 27);
+        self.u = char::from_u32(v).unwrap_or('\0');
+    }
+
+    pub fn tsetisclassicplaceholder(&mut self, is_classic: i32) {
+        let v = (self.u as u32 & !(0x1 << 29)) | (((is_classic as u32) & 0x1) << 29);
+        self.u = char::from_u32(v).unwrap_or('\0');
+    }
+
+    pub fn tgetimgid(&self) -> u32 {
+        let mut msb = self.tgetimgid4thbyteplus1();
+        if msb != 0 {
+            msb -= 1;
+        }
+        (msb << 24) | (self.fg & 0xFFFFFF)
+    }
+
+    pub fn tsetimgid(&mut self, id: u32) {
+        self.fg = (id & 0xFFFFFF) | (1 << 24);
+        self.tsetimg4thbyteplus1(((id >> 24) & 0xFF) + 1);
+    }
+
+    pub fn tgetimgplacementid(&self) -> u32 {
+        if self.tgetdecorcolor() == DECOR_DEFAULT_COLOR {
+            return 0;
+        }
+
+        self.decoration as u32 & 0xFFFFFF
+    }
+
+    pub fn tsetimgplacementid(&mut self, id: u32) {
+        self.decoration = (id & 0xFFFFFF) | (1 << 24);
+    }
+
+    pub fn tgetdecorcolor(&self) -> u32 {
+        self.decoration & 0x1ffffff
+    }
+
+    pub fn tgetdecorstyle(&self) -> u32 {
+        (self.decoration >> 25) & 0x7
     }
 }
 
