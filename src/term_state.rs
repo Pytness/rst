@@ -891,7 +891,11 @@ impl TermState {
     }
 
     pub fn tputc_char(&mut self, u: char) {
-        let width = u.width().unwrap_or(0);
+        let width = if (u as u32) < 127 && !self.mode.contains(TermMode::MODE_UTF8) {
+            1
+        } else {
+            u.width().unwrap_or(0)
+        };
 
         if self.selected(self.c.x, self.c.y) {
             self.selclear();
