@@ -1,16 +1,15 @@
 use std::ops::{Deref, DerefMut};
 use std::ptr::{null, null_mut};
 
+use crate::BETWEEN;
 use crate::config::VTIDEN;
 use crate::csiesq::{CSIEscape, STR_TERM_ST};
-use crate::glyph::{Glyph, GlyphAttribute};
+use crate::glyph::Glyph;
 use crate::term_state::{
-    CMDFD, CursorMovement, CursorState, DECOR_DEFAULT_COLOR, IOFD, PID, SU, TermMode, TermState,
-    tprinter,
+    CMDFD, CursorMovement, DECOR_DEFAULT_COLOR, IOFD, PID, SU, TermMode, TermState,
 };
 pub use crate::term_state::{IS_TRUECOL, twrite_aborted};
 use crate::win::{TermWindow, WinMode};
-use crate::{BETWEEN, config};
 use bitflags::bitflags;
 use unicode_width::UnicodeWidthChar;
 
@@ -78,7 +77,7 @@ bitflags! {
 #[derive(Default)]
 pub struct Term {
     pub state: TermState,
-    strescseq: StrEscape,
+    pub strescseq: StrEscape,
     pub csiescseq: CSIEscape,
     esc: EscapeState,
     win: *mut TermWindow,

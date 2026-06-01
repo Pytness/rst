@@ -47,21 +47,14 @@ enum CursorStyle {
 
 #[derive(Default)]
 pub struct TermWindow {
-    // int tw, th; /* tty width and height */
-    // int w, h;   /* window width and height */
-    // int hborderpx, vborderpx;
-    // int ch;     /* char height */
-    // int cw;     /* char width  */
-    // int mode;   /* window state/mode flags */
-    // int cursor; /* cursor style */
-    pub tw: i32,
-    pub th: i32,
-    pub w: u32,
-    pub h: u32,
-    pub hborderpx: u32,
-    pub vborderpx: u32,
-    pub ch: u32,
-    pub cw: u32,
-    pub mode: WinMode,
-    pub cursor: CursorStyle,
+    pub tw: i32,             // tty width
+    pub th: i32,             // tty height
+    pub w: u32,              // window width
+    pub h: u32,              // window height
+    pub hborderpx: u32,      // horizontal border in pixels
+    pub vborderpx: u32,      // vertical border in pixels
+    pub ch: u32,             // char height
+    pub cw: u32,             // char width
+    pub mode: WinMode,       // window state/mode flags
+    pub cursor: CursorStyle, // cursor style
 }

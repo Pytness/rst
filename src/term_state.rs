@@ -1,7 +1,4 @@
-use std::ptr::null;
-
 use bitflags::bitflags;
-use unicode_width::UnicodeWidthChar;
 
 use crate::BETWEEN;
 use crate::boxdraw::boxdraw::isboxdraw;
@@ -96,17 +93,10 @@ pub struct Selection {
     pub mode: SelectionMode,
     pub type_: SelectionType,
     pub snap: i32,
-    /*
-     * Selection variables:
-     * nb – normalized coordinates of the beginning of the selection
-     * ne – normalized coordinates of the end of the selection
-     * ob – original coordinates of the beginning of the selection
-     * oe – original coordinates of the end of the selection
-     */
-    pub nb: Vec2,
-    pub ne: Vec2,
-    pub ob: Vec2,
-    pub oe: Vec2,
+    pub nb: Vec2, // normalized beginning
+    pub ne: Vec2, // normalized end
+    pub ob: Vec2, // original beginning
+    pub oe: Vec2, // original end
     pub alt: bool,
 }
 
