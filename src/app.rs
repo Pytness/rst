@@ -283,6 +283,9 @@ impl<'a> App<'a> {
         ocx = ocx.max(0).min(self.term.state.col - 1);
         ocy = ocy.max(0).min(self.term.state.row - 1);
 
+        self.term.state.ocx = ocx;
+        self.term.state.ocy = ocy;
+
         if self.term.state.line[self.term.state.ocy][self.term.state.ocx]
             .mode
             .contains(GlyphAttribute::ATTR_WDUMMY)
