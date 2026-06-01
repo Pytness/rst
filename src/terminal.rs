@@ -373,21 +373,11 @@ impl Term {
     // TODO: refactor this
     pub fn tputc(&mut self, u: char) {
         let control = ISCONTROL(u);
-        let mut width = 0;
-        let mut len = 0;
-
-        if (u as u32) < 127 && !self.state.mode.contains(TermMode::MODE_UTF8) {
-            width = 1;
-            len = 1;
+        let len = if (u as u32) < 127 && !self.state.mode.contains(TermMode::MODE_UTF8) {
+            1
         } else {
-            len = u.len_utf8();
-
-            width = u.width().unwrap_or(0);
-
-            if !control && width == 0 {
-                width = 1;
-            }
-        }
+            u.len_utf8()
+        };
 
         if self.state.mode.contains(TermMode::MODE_PRINT) {
             let mut buf = [0u8; 4];
