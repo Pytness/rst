@@ -15,6 +15,7 @@ mod font_registry;
 mod gl_handler;
 mod glyph;
 mod graphics;
+mod keymap;
 mod kitty;
 mod macros;
 mod renderers;
