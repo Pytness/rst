@@ -242,10 +242,8 @@ impl<'a> App<'a> {
             term.win.h = height;
         }
 
-        // TODO:
-        let borderpx = 0;
-        let mut col = (term.win.w - 2 * borderpx) / term.win.cw;
-        let mut row = (term.win.h - 2 * borderpx) / term.win.ch;
+        let mut col = (term.win.w - 2 * config::BORDERPX) / term.win.cw;
+        let mut row = (term.win.h - 2 * config::BORDERPX) / term.win.ch;
 
         col = col.max(2);
         row = row.max(1);

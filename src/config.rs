@@ -61,3 +61,4 @@ pub const DEFAULTRCS: u32 = 257;
 
 pub const SHELL: &str = "/bin/bash";
 pub const TERM: &CStr = c"xterm-256color";
+pub const BORDERPX: u32 = 4;

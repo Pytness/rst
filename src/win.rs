@@ -47,8 +47,8 @@ enum CursorStyle {
 
 #[derive(Default)]
 pub struct TermWindow {
-    pub tw: i32,             // tty width
-    pub th: i32,             // tty height
+    pub tw: u32,             // tty width
+    pub th: u32,             // tty height
     pub w: u32,              // window width
     pub h: u32,              // window height
     pub hborderpx: u32,      // horizontal border in pixels
