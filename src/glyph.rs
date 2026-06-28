@@ -49,8 +49,8 @@ impl Default for Glyph {
         Self {
             u: '\0',
             mode: GlyphAttribute::ATTR_NULL,
-            fg: config::defaultfg,
-            bg: config::defaultbg,
+            fg: config::DEFAULTFG,
+            bg: config::DEFAULTBG,
             decoration: 0,
         }
     }

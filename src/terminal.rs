@@ -1048,7 +1048,7 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
         setenv!(c"USER", (*pw).pw_name);
         setenv!(c"SHELL", sh);
         setenv!(c"HOME", (*pw).pw_dir);
-        setenv!(c"TERM", config::term.as_ptr());
+        setenv!(c"TERM", config::TERM.as_ptr());
         setenv!(c"COLORTERM", c"truecolor".as_ptr());
 
         libc::execvp(sh, args.as_ptr());

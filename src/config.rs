@@ -54,10 +54,10 @@ pub const MAXLATENCY: u64 = 33;
 pub const MSHORTCUTS: Vec<MouseShortcut> = vec![];
 pub const shortcuts: Vec<Shortcut> = vec![];
 
-pub const defaultfg: u32 = 258;
-pub const defaultbg: u32 = 259;
+pub const DEFAULTFG: u32 = 258;
+pub const DEFAULTBG: u32 = 259;
 pub const DEFAULTCS: u32 = 256;
 pub const DEFAULTRCS: u32 = 257;
 
-pub const shell: &str = "/bin/bash";
-pub const term: &CStr = c"xterm-256color";
+pub const SHELL: &str = "/bin/bash";
+pub const TERM: &CStr = c"xterm-256color";

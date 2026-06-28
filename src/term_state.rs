@@ -1050,8 +1050,8 @@ impl TermState {
                         | GlyphAttribute::ATTR_INVISIBLE
                         | GlyphAttribute::ATTR_STRUCK);
 
-                    self.c.attr.fg = config::defaultfg;
-                    self.c.attr.bg = config::defaultbg;
+                    self.c.attr.fg = config::DEFAULTFG;
+                    self.c.attr.bg = config::DEFAULTBG;
                     self.c.attr.decoration = DECOR_DEFAULT_COLOR;
                 }
 
@@ -1148,7 +1148,7 @@ impl TermState {
                 }
 
                 39 => {
-                    self.c.attr.fg = config::defaultfg;
+                    self.c.attr.fg = config::DEFAULTFG;
                 }
 
                 48 => {
@@ -1160,7 +1160,7 @@ impl TermState {
                 }
 
                 49 => {
-                    self.c.attr.bg = config::defaultbg;
+                    self.c.attr.bg = config::DEFAULTBG;
                 }
 
                 // underline decoration color
