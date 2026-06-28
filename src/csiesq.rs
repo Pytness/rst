@@ -137,7 +137,7 @@ impl CSIEscape {
             b'e'   // VPR -- Cursor <n> Down
             => {
                 DEFAULT!(self.arg[0], 1);
-                state.tmoveto(state.c.x, state.c.y - self.arg[0] as usize);
+                state.tmoveto(state.c.x, state.c.y + self.arg[0] as usize);
             }
 
             // MC -- Media Copy
