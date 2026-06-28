@@ -27,6 +27,21 @@ fn is_control(c: char) -> bool {
     is_control_c0(c) || is_control_c1(c)
 }
 
+fn utf8decode(buf: &[u8]) -> Option<char> {
+    for utf_len in 1..=4 {
+        let end = utf_len.min(buf.len());
+        match std::str::from_utf8(&buf[..end]) {
+            Ok(s) => {
+                let u = s.chars().next().unwrap();
+                return Some(u);
+            }
+            _ => continue,
+        }
+    }
+
+    return None;
+}
+
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
     pub struct EscapeState: u32 {
@@ -199,29 +214,27 @@ impl Term {
     fn twrite(&mut self, buffer: &[u8], buflen: usize, show_ctrl: bool) -> usize {
         let mut charsize = 0;
         let mut i = 0;
-        let mut u: char = '\0';
+        let mut u: char;
         let su0 = unsafe { SU };
 
         unsafe { TWRITE_ABORTED = false };
 
         while i < buflen {
-            if self.state.mode.contains(TermMode::Sixel)
             /* TODO: sixel_st.state != PS_ESC */
-            {
+            if self.state.mode.contains(TermMode::Sixel) {
                 // charsize = sixel_parser_parse(&sixel_st, (const unsigned char *)buf + n, buflen - n);
-                // continue;
+                continue;
             } else if self.state.mode.contains(TermMode::Utf8) {
                 // FIXME: assumes all chars are properly encoded
-                for utf_len in 0..4 {
-                    let end = (i + utf_len + 1).min(buflen);
-                    match str::from_utf8(&buffer[i..end]) {
-                        Ok(s) => {
-                            u = s.chars().next().unwrap_or('\0');
-                            charsize = utf_len + 1;
-                            break;
-                        }
-                        _ => continue,
-                    }
+
+                let u_opt = utf8decode(&buffer[i..buflen]);
+
+                if let Some(u_decoded) = u_opt {
+                    u = u_decoded;
+                    charsize = u.len_utf8();
+                } else {
+                    println!("Invalid UTF-8 sequence at buffer[{}..{}]", i, buflen);
+                    break;
                 }
             } else {
                 println!("Non-UTF8 mode is not supported in this implementation");
@@ -888,10 +901,12 @@ impl Term {
                     BUF_WRITTEN -= written;
 
                     // keep any incomplete UTF-8 byte sequence for the next call
-                    if BUF_WRITTEN > 0 {
+                    if written <= BUF_WRITTEN && BUF_WRITTEN > 0 {
+                        let remainding = BUF_WRITTEN - written;
+
                         let b = &raw mut BUF as *mut libc::c_void;
-                        std::ptr::copy(b.add(written), b, BUF_WRITTEN);
-                        std::ptr::write_bytes(b.add(BUF_WRITTEN), 0, BUF_SIZE - BUF_WRITTEN);
+                        std::ptr::copy(b.add(written), b, remainding);
+                        std::ptr::write_bytes(b.add(remainding), 0, BUF_SIZE - remainding);
                     }
 
                     return ret as usize;
