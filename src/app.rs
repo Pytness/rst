@@ -13,7 +13,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
@@ -22,6 +22,7 @@ use crate::config::{self, MAXLATENCY};
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
+use crate::keymap::kmap;
 use crate::macros::macs::include_font;
 use crate::renderers::{self, TextRenderer};
 use crate::terminal::{IS_TRUECOL, TWRITE_ABORTED, Term};
@@ -37,6 +38,8 @@ pub struct App<'a> {
     gl_handler: GlHandler,
     app_state: Option<AppState>,
     gl: Option<Rc<glow::Context>>,
+
+    keyboard_modifiers: ModifiersState,
 
     font_registry: FontRegistry,
     text_renderer: Option<TextRenderer<'a>>,
@@ -75,6 +78,7 @@ impl<'a> App<'a> {
             text_renderer: None,
             quad_renderer: None,
             conf_font_size_px: 16,
+            keyboard_modifiers: Default::default(),
 
             term,
             ttyfd,
@@ -132,13 +136,12 @@ impl<'a> App<'a> {
         }
 
         // custom keys from config
-        /*
-         * TODO:
-         * if ((customkey = kmap(ksym, e->state))) {
-         * 	ttywrite(customkey, strlen(customkey), 1);
-         * 	return;
-         * }
-         */
+        if let Some(customkey) = kmap(code, self.keyboard_modifiers) {
+            let customkey_str = customkey.to_str().unwrap();
+            self.term
+                .ttywrite(customkey_str.as_bytes(), customkey_str.len(), true);
+            return;
+        }
 
         // composed string from input method
         let Some(text) = event.text_with_all_modifiers() else {
@@ -566,6 +569,10 @@ impl<'a> ApplicationHandler for App<'a> {
         event: winit::event::WindowEvent,
     ) {
         match event {
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.keyboard_modifiers = modifiers.state();
+                println!("Modifiers changed: {:?}", self.keyboard_modifiers);
+            }
             WindowEvent::KeyboardInput {
                 event,
                 is_synthetic: false,
