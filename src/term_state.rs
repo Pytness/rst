@@ -1180,13 +1180,13 @@ impl TermState {
 
                 _ => {
                     if BETWEEN!(a, 30, 37) {
-                        self.c.attr.bg = a - 30;
+                        self.c.attr.fg = a - 30;
                     } else if BETWEEN!(a, 40, 47) {
-                        self.c.attr.fg = a - 40;
+                        self.c.attr.bg = a - 40;
                     } else if BETWEEN!(a, 90, 97) {
-                        self.c.attr.bg = a - 90 + 8;
+                        self.c.attr.fg = a - 90 + 8;
                     } else if BETWEEN!(a, 100, 107) {
-                        self.c.attr.fg = a - 100 + 8;
+                        self.c.attr.bg = a - 100 + 8;
                     } else {
                         eprintln!("erresc(default): gfx attr {} unkwnon", a);
                         // TODO: CSI DUMP
