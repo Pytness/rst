@@ -363,18 +363,19 @@ impl Term {
 
     // TODO: refactor this
     pub fn tputc(&mut self, u: char) {
+        let mut utfbuf = [0u8; 4];
         let control = is_control(u);
+
         let len = if (u as u32) < 127 && !self.state.mode.contains(TermMode::Utf8) {
+            utfbuf[0] = u as u8;
             1
         } else {
+            u.encode_utf8(&mut utfbuf);
             u.len_utf8()
         };
 
         if self.state.mode.contains(TermMode::Print) {
-            let mut buf = [0u8; 4];
-            u.encode_utf8(&mut buf);
-
-            self.tprinter(&buf, len);
+            self.tprinter(&utfbuf, len);
         }
 
         /*
@@ -419,9 +420,8 @@ impl Term {
             // memmove(&strescseq.buf[strescseq.len], c, len);
             // strescseq.len += len;
             // return;
-            self.strescseq.buf[self.strescseq.len..self.strescseq.len + len]
-                .copy_from_slice(&u.to_string().as_bytes()[..len]);
 
+            self.strescseq.buf.extend_from_slice(&utfbuf[..len]);
             self.strescseq.len += len;
             return;
         }
