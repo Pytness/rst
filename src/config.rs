@@ -1,3 +1,5 @@
+use std::ffi::CStr;
+
 use winit::keyboard::KeyCode;
 
 pub struct MouseShortcut {
@@ -58,3 +60,4 @@ pub const DEFAULTCS: u32 = 256;
 pub const DEFAULTRCS: u32 = 257;
 
 pub const shell: &str = "/bin/bash";
+pub const term: &CStr = c"xterm-256color";

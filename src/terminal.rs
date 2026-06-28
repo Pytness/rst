@@ -1,12 +1,12 @@
 use std::ffi::CString;
 use std::ptr::{null, null_mut};
 
-use crate::BETWEEN;
 use crate::config::VTIDEN;
 use crate::csiesq::{CSIEscape, STR_TERM_ST};
 use crate::term_state::{CMDFD, CursorMovement, IOFD, PID, SU, TermMode, TermState};
 pub use crate::term_state::{IS_TRUECOL, TWRITE_ABORTED};
 use crate::win::{TermWindow, WinMode};
+use crate::{BETWEEN, config};
 use bitflags::bitflags;
 
 use crate::term_state::Charset;
@@ -1021,16 +1021,7 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
             vec![sh, std::ptr::null(), std::ptr::null()]
         };
 
-        // TODO: handle envs
-        // unsetenv("COLUMNS");
-        // unsetenv("LINES");
-        // unsetenv("TERMCAP");
-        // setenv("LOGNAME", pw->pw_name, 1);
-        // setenv("USER", pw->pw_name, 1);
-        // setenv("SHELL", sh, 1);
-        // setenv("HOME", pw->pw_dir, 1);
-        // setenv("TERM", termname, 1);
-        // setenv("COLORTERM", "truecolor", 1);
+        // TODO: handle signals
         // signal(SIGCHLD, SIG_DFL);
         // signal(SIGHUP, SIG_DFL);
         // signal(SIGINT, SIG_DFL);
@@ -1057,7 +1048,8 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
         setenv!(c"USER", (*pw).pw_name);
         setenv!(c"SHELL", sh);
         setenv!(c"HOME", (*pw).pw_dir);
-        setenv!(c"TERM", c"xterm-256color".as_ptr());
+        setenv!(c"TERM", config::term.as_ptr());
+        setenv!(c"COLORTERM", c"truecolor".as_ptr());
 
         libc::execvp(sh, args.as_ptr());
         libc::_exit(1);
