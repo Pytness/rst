@@ -32,7 +32,7 @@ fn as_block(u: char) -> u32 {
 pub fn isboxdraw(u: char) -> bool {
     let block = as_block(u);
 
-    (block == 0x2500 && BOXDATA[u as usize] != 0) || block == 0x2800
+    (block == 0x2500 && BOXDATA[u as usize & 0xff] != 0) || block == 0x2800
 }
 
 pub fn boxdrawindex(u: char) -> u32 {
