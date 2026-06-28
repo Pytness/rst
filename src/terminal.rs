@@ -887,9 +887,6 @@ impl Term {
                     ALREADY_PROCESSING = false;
                     BUF_WRITTEN -= written;
 
-                    let left = BUF_WRITTEN;
-                    println!("Finished processing, {} bytes left in buffer", left);
-
                     // keep any incomplete UTF-8 byte sequence for the next call
                     if BUF_WRITTEN > 0 {
                         let b = &raw mut BUF as *mut libc::c_void;
