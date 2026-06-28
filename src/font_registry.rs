@@ -179,7 +179,6 @@ fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
         "Matched font: '{}', requested slant={:?}, weight={:?}, got slant={:?}, weight={:?}, face_index={:?}, filename='{}'",
         name, slant, weight, match_slant, match_weight, face_index, filename
     );
-    fmatch.print();
 
     let mut matrix: *mut FcMatrix = std::ptr::null_mut();
     // fn FcPatternGetMatrix( *mut FcPattern, *const c_char, c_int, *mut *mut FcMatrix) -> FcResult,

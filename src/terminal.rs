@@ -1056,7 +1056,6 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
         setenv!("HOME", (*pw).pw_dir);
         setenv!("TERM", "xterm-256color".as_ptr() as *const libc::c_char);
 
-        println!("Exec: {:?} with args: {:?}", sh, args);
         libc::execvp(sh, args.as_ptr());
         libc::_exit(1);
     }

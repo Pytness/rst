@@ -332,7 +332,6 @@ impl<'a> App<'a> {
     }
 
     fn drawregion(&mut self, x1: i32, y1: i32, x2: usize, y2: usize) {
-        println!("Drawing region: ({}, {}) to ({}, {})", x1, y1, x2, y2);
         self.xstartimagedraw(&self.term.state.dirty, self.term.state.row);
 
         for y in y1 as usize..y2 {
@@ -342,7 +341,6 @@ impl<'a> App<'a> {
 
             self.term.state.dirty[y] = false;
             let line = &self.term.state.line[y].clone();
-            println!("Drawing line {}", y);
             self.xdrawline(line, x1, y, x2);
         }
 
@@ -373,12 +371,10 @@ impl<'a> App<'a> {
 
     fn xfinishdraw(&self) {
         // TODO:
-        println!("Finished drawing");
     }
 
     fn xximspot(&self, _ocx: usize, _ocy: usize) {
         // TODO:
-        println!("xximspot");
     }
 
     fn xdrawline(&mut self, line: &[Glyph], x1: i32, y1: usize, x2: usize) {
@@ -568,8 +564,6 @@ impl<'a> ApplicationHandler for App<'a> {
         _id: WindowId,
         event: winit::event::WindowEvent,
     ) {
-        println!("~~~~~~~~~~~~~~!@#!@#!@#Received window event");
-
         match event {
             WindowEvent::KeyboardInput {
                 event,
@@ -593,8 +587,8 @@ impl<'a> ApplicationHandler for App<'a> {
                     gl_surface.swap_buffers(gl_context).unwrap();
                 }
 
-                let duration = start.elapsed();
-                println!("Redrawn in {} ms", duration.as_millis());
+                // let duration = start.elapsed();
+                // println!("Redrawn in {} ms", duration.as_millis());
             }
 
             WindowEvent::CloseRequested => {
