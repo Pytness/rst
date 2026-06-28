@@ -996,7 +996,7 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
             panic!("getpwuid: {}", std::io::Error::last_os_error());
         }
 
-        let mut sh = libc::getenv("SHELL".as_ptr() as *const libc::c_char);
+        let mut sh = libc::getenv("SHELL\0".as_ptr() as *const libc::c_char);
 
         if sh.is_null() {
             sh = if *((*pw).pw_shell) != 0 {
