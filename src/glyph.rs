@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 
+use crate::config;
 use crate::term_state::DECOR_DEFAULT_COLOR;
 
 bitflags! {
@@ -48,8 +49,8 @@ impl Default for Glyph {
         Self {
             u: '\0',
             mode: GlyphAttribute::ATTR_NULL,
-            fg: 0,
-            bg: 0,
+            fg: config::defaultfg,
+            bg: config::defaultbg,
             decoration: 0,
         }
     }
