@@ -56,3 +56,5 @@ pub const defaultfg: u32 = 258;
 pub const defaultbg: u32 = 259;
 pub const DEFAULTCS: u32 = 256;
 pub const DEFAULTRCS: u32 = 257;
+
+pub const shell: &str = "/bin/bash";

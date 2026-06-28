@@ -18,7 +18,7 @@ use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
 use crate::colors::COLORS;
-use crate::config::MAXLATENCY;
+use crate::config::{self, MAXLATENCY};
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
@@ -56,7 +56,7 @@ impl<'a> App<'a> {
     ) -> Self {
         let mut term = term;
 
-        let ttyfd = term.ttynew(None, Some("/bin/bash"), None, None);
+        let ttyfd = term.ttynew(None, Some(config::shell), None, None);
         println!("ttyfd: {ttyfd}");
 
         let mut font_registry = FontRegistry::new();
