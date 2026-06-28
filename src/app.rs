@@ -207,7 +207,7 @@ impl<'a> App<'a> {
             self.text_renderer
                 .as_mut()
                 .unwrap()
-                .set_viewport(size.width as i32, size.height as i32);
+                .set_viewport(&self.term.win);
 
             self.gl()
                 .viewport(0, 0, size.width as i32, size.height as i32);
@@ -256,7 +256,10 @@ impl<'a> App<'a> {
 
         term.state.tresize(col as usize, row as usize);
 
-        // xresize(col, row);
+        // TODO: xresize(col, row);
+        // included in xresize (not implemented yet)
+        term.win.tw = col * term.win.cw;
+        term.win.th = row * term.win.ch;
 
         term.ttyresize(term.win.tw as usize, term.win.th as usize);
     }

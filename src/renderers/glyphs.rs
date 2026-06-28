@@ -11,6 +11,7 @@ use glow::HasContext;
 use crate::font_registry::{FontRegistry, FontStyle, ShapedGlyph};
 use crate::macros::macs::include_shader;
 use crate::text_manager::{TermGlyph, TextManager};
+use crate::win::TermWindow;
 
 static FT_LIB: LazyLock<Library> =
     LazyLock::new(|| Library::init().expect("failed to initialize FreeType library"));
@@ -608,8 +609,8 @@ impl<'a> TextRenderer<'a> {
         }
     }
 
-    pub fn set_viewport(&mut self, width: i32, height: i32) {
-        self.text_manager.set_window_size(width, height);
+    pub fn set_viewport(&mut self, win: &TermWindow) {
+        self.text_manager.set_window_size(win);
     }
 }
 

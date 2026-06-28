@@ -1,6 +1,7 @@
 use bitflags::bitflags;
 
 use crate::font_registry::FontStyle;
+use crate::win::TermWindow;
 
 bitflags! {
     pub struct TermGlyphMode: u8 {
@@ -42,9 +43,6 @@ pub struct TextManager {
     pub font_height: i32,
     pub window_width: i32,
     pub window_height: i32,
-    pub rows: i32,
-    pub cols: i32,
-    min_border_px: i32,
     pub border_x_px: i32,
     pub border_y_px: i32,
 }
@@ -67,24 +65,16 @@ impl TextManager {
             font_height,
             window_width,
             window_height,
-            rows,
-            cols,
-            min_border_px,
             border_x_px,
             border_y_px,
         }
     }
 
-    pub fn set_window_size(&mut self, width: i32, height: i32) {
-        let cols = (width - 2 * self.min_border_px) / self.font_width;
-        let rows = (height - 2 * self.min_border_px) / self.font_height;
-
-        self.border_y_px = (height - (rows * self.font_height)) / 2;
-        self.border_x_px = (width - (cols * self.font_width)) / 2;
-        self.window_width = width;
-        self.window_height = height;
-        self.rows = rows;
-        self.cols = cols;
+    pub fn set_window_size(&mut self, win: &TermWindow) {
+        self.border_x_px = win.hborderpx as i32;
+        self.border_y_px = win.vborderpx as i32;
+        self.window_width = win.w as i32;
+        self.window_height = win.h as i32;
     }
 
     pub fn get_cell_position(&self, row: i32, col: i32) -> CellPosition {
