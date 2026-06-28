@@ -462,7 +462,7 @@ impl<'a> TextRenderer<'a> {
                     cell_width,
                 }) = self.ensure_glyph(shaped_g, term_g.font_style)
                 else {
-                    println!("Warning: glyph ID {} not found in font", shaped_g.glyph_id);
+                    // println!("Warning: glyph ID {} not found in font", shaped_g.glyph_id);
                     continue;
                 };
 
