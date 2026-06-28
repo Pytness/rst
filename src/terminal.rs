@@ -830,8 +830,8 @@ impl Term {
 
     pub fn ttyread(&mut self) -> usize {
         println!("ttyread called");
-        const BUF_SIZE: usize = 256;
-        static mut BUF: [u8; 256] = unsafe { std::mem::zeroed() };
+        const BUF_SIZE: usize = 8192;
+        static mut BUF: [u8; BUF_SIZE] = unsafe { std::mem::zeroed() };
         static mut BUF_WRITTEN: usize = 0;
         static mut ALREADY_PROCESSING: bool = false;
 
