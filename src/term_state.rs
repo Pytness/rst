@@ -7,7 +7,7 @@ use crate::config;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::kitty::{tdefcolor, tsetdecorcolor, tsetdecorstyle};
 
-pub static mut IOFD: i32 = 0;
+pub static mut IOFD: i32 = 1;
 pub static mut CMDFD: i32 = 0;
 pub static mut PID: i32 = 0;
 pub static mut SU: usize = 0;
