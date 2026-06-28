@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use std::ptr::{null, null_mut};
 
 use crate::BETWEEN;
@@ -996,13 +997,15 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
             panic!("getpwuid: {}", std::io::Error::last_os_error());
         }
 
-        let mut sh = libc::getenv("SHELL\0".as_ptr() as *const libc::c_char);
+        let mut sh = libc::getenv(c"SHELL".as_ptr());
+
+        let default_shell = CString::new(cmd.unwrap_or("/bin/sh")).unwrap();
 
         if sh.is_null() {
             sh = if *((*pw).pw_shell) != 0 {
                 (*pw).pw_shell
             } else {
-                cmd.unwrap_or("/bin/sh").as_ptr() as *mut libc::c_char
+                default_shell.as_ptr() as *mut libc::c_char
             };
         }
 
@@ -1047,14 +1050,14 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
             };
         }
 
-        unsetenv!("COLUMNS");
-        unsetenv!("LINES");
-        unsetenv!("TERMCAP");
-        setenv!("LOGNAME", (*pw).pw_name);
-        setenv!("USER", (*pw).pw_name);
-        setenv!("SHELL", sh);
-        setenv!("HOME", (*pw).pw_dir);
-        setenv!("TERM", "xterm-256color".as_ptr() as *const libc::c_char);
+        unsetenv!(c"COLUMNS");
+        unsetenv!(c"LINES");
+        unsetenv!(c"TERMCAP");
+        setenv!(c"LOGNAME", (*pw).pw_name);
+        setenv!(c"USER", (*pw).pw_name);
+        setenv!(c"SHELL", sh);
+        setenv!(c"HOME", (*pw).pw_dir);
+        setenv!(c"TERM", c"xterm-256color".as_ptr());
 
         libc::execvp(sh, args.as_ptr());
         libc::_exit(1);
