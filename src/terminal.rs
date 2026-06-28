@@ -233,7 +233,6 @@ impl Term {
                     u = u_decoded;
                     charsize = u.len_utf8();
                 } else {
-                    println!("Invalid UTF-8 sequence at buffer[{}..{}]", i, buflen);
                     break;
                 }
             } else {
