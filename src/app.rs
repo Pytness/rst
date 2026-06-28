@@ -56,7 +56,7 @@ impl<'a> App<'a> {
     ) -> Self {
         let mut term = term;
 
-        let ttyfd = term.ttynew(None, Some("/bin/zsh"), None, None);
+        let ttyfd = term.ttynew(None, Some("/bin/bash"), None, None);
         println!("ttyfd: {ttyfd}");
 
         let mut font_registry = FontRegistry::new();
