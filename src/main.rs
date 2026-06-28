@@ -19,6 +19,7 @@ mod kitty;
 mod macros;
 mod renderers;
 mod sixel;
+mod stresq;
 mod term_state;
 mod terminal;
 mod text_manager;

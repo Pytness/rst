@@ -1,8 +1,9 @@
 use std::ffi::CString;
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 
 use crate::config::VTIDEN;
 use crate::csiesq::{CSIEscape, STR_TERM_ST};
+use crate::stresq::StrEscape;
 use crate::term_state::{CMDFD, CursorMovement, IOFD, PID, SU, TermMode, TermState};
 pub use crate::term_state::{IS_TRUECOL, TWRITE_ABORTED};
 use crate::win::{TermWindow, WinMode};
@@ -13,30 +14,6 @@ use crate::term_state::Charset;
 
 const STR_BUF_SIZ: usize = 128 * 4;
 const UTF_SIZ: usize = 4;
-
-/// Holds the current STR/DCS/OSC/APC/PM escape sequence being accumulated.
-#[derive(Debug)]
-pub struct StrEscape {
-    /// The type byte of the escape sequence (e.g. b'P' for DCS)
-    pub type_: u8,
-    /// Raw accumulated bytes of the sequence
-    pub buf: Vec<u8>,
-    pub len: usize,
-    pub size: usize,
-    pub term: *const u8,
-}
-
-impl Default for StrEscape {
-    fn default() -> Self {
-        Self {
-            type_: 0,
-            buf: Vec::with_capacity(STR_BUF_SIZ),
-            len: 0,
-            size: 0,
-            term: null(),
-        }
-    }
-}
 
 fn is_control_c0(c: char) -> bool {
     BETWEEN!(c, '\0', '\u{1F}') || c == '\u{7F}'
@@ -848,7 +825,7 @@ impl Term {
     }
 
     fn strhandle(&mut self) {
-        strhandle();
+        self.strescseq.handle(&mut self.state);
     }
 
     pub fn ttyread(&mut self) -> usize {
