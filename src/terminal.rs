@@ -835,7 +835,6 @@ impl Term {
         static mut BUF_WRITTEN: usize = 0;
         static mut ALREADY_PROCESSING: bool = false;
 
-        let mut ret = 0;
         let mut written = 0;
 
         if unsafe { BUF_WRITTEN > BUF_SIZE } {
@@ -845,7 +844,7 @@ impl Term {
         unsafe {
             // append read bytes to unprocessed bytes
             println!("ttyread about to read");
-            ret = if TWRITE_ABORTED {
+            let ret = if TWRITE_ABORTED {
                 1
             } else {
                 let b = &raw mut BUF as *mut libc::c_void;
