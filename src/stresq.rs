@@ -88,7 +88,7 @@ impl StrEscape {
             if self.type_ == b']' && (self.buf[0] <= b'2') && self.buf[1] == b';' {
                 self.args[self.narg] = p;
                 self.args[self.narg + 1] = p.add(2);
-                *(p.add(1)) = 0;
+                self.buf[1] = 0;
 
                 self.narg += 2;
 
