@@ -1,14 +1,30 @@
 use crate::config;
 use crate::csiesq::STR_BUF_SIZ;
 use crate::term_state::TermState;
+use std::ffi::CString;
 use std::ptr::null;
 
 pub const STR_ARG_SIZ: usize = 16;
 
 struct OscEntry {
     idx: u32,
-    str: String,
+    str: &'static str,
 }
+
+const OSC_TABLE: [OscEntry; 3] = [
+    OscEntry {
+        idx: config::DEFAULTFG,
+        str: "foreground",
+    },
+    OscEntry {
+        idx: config::DEFAULTBG,
+        str: "background",
+    },
+    OscEntry {
+        idx: config::DEFAULTCS,
+        str: "cursor",
+    },
+];
 
 /// Holds the current STR/DCS/OSC/APC/PM escape sequence being accumulated.
 #[derive(Debug)]
@@ -51,25 +67,70 @@ impl StrEscape {
     }
 
     pub fn handle(&mut self, state: &mut TermState) {
-        let mut osc_table = vec![
-            OscEntry {
-                idx: config::DEFAULTFG,
-                str: "foreground".to_string(),
-            },
-            OscEntry {
-                idx: config::DEFAULTBG,
-                str: "background".to_string(),
-            },
-            OscEntry {
-                idx: config::DEFAULTCS,
-                str: "cursor".to_string(),
-            },
-        ];
-
         // FIX:
         // term.esc &= ~(ESC_STR_END | ESC_STR);
 
-        self.parse()
+        self.parse();
+
+        let narg = self.narg;
+        let par: i32 = if self.narg > 0 {
+            unsafe {
+                let cstr = CString::from_raw(self.args[0] as *mut i8);
+                let par = cstr.to_str().unwrap_or_default();
+                par.parse::<i32>().unwrap_or(0)
+            }
+        } else {
+            0
+        };
+
+        match self.type_ {
+            // OSC -- Operating System Command
+            b']' => match par {
+                0 => {
+                    if narg > 1 {
+                        // TODO:
+                        // xsettitle(self.args[1]);
+                        // xseticontitle(self.args[1]);
+                    }
+                    return;
+                }
+                1 => {
+                    if narg > 1 {
+                        // TODO:
+                        // xseticontitle(self.args[1]);
+                    }
+                    return;
+                }
+                2 => {
+                    if narg > 1 {
+                        // TODO:
+                        // xsettitle(self.args[1]);
+                    }
+                    return;
+                }
+                52 => {
+                    // TODO:
+                    // if (narg > 2 && allowwindowops) {
+                    //     dec = base64dec(self.args[2]);
+                    //     if (dec) {
+                    //         xsetsel(dec);
+                    //         xclipcopy();
+                    //     } else {
+                    //         fprintf(stderr, "erresc: invalid base64\n");
+                    //     }
+                    // }
+                    return;
+                }
+                /* Clear Hyperlinks */
+                8 => {
+                    return;
+                }
+
+                10 | 11 | 12 if narg >= 2 => {}
+                _ => {}
+            },
+            _ => {}
+        }
     }
 
     pub fn parse(&mut self) {
@@ -111,5 +172,32 @@ impl StrEscape {
                 p = p.add(1);
             }
         }
+    }
+
+    fn strdump(&self) {
+        eprintln!("ESC{}", self.type_ as char);
+        for i in 0..self.len {
+            let c = self.buf[i] as char;
+
+            if c == '\0' {
+                eprint!("\n");
+                return;
+            }
+
+            if c == '\n' {
+                eprint!("(\\n)");
+            } else if c == '\r' {
+                eprint!("(\\r)");
+            } else if c == '\x1b' {
+                eprint!("(\\e");
+            } else if c.is_ascii_graphic() {
+                eprint!("{}", c);
+            } else {
+                eprint!("({:02x})", c as u8);
+            }
+        }
+
+        let terminator = unsafe { if *self.term == 0x1b { "ESC\\" } else { "BEL" } };
+        eprintln!("{}", terminator);
     }
 }
