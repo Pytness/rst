@@ -563,14 +563,14 @@ impl Term {
                 interrupt_sequence = true;
             }
 
-            // TODO: check IGNORED
-            // case '\005': /* ENQ (IGNORED) */
-            // case '\000': /* NUL (IGNORED) */
-            // case '\021': /* XON (IGNORED) */
-            // case '\023': /* XOFF (IGNORED) */
-            // case 0177:   /* DEL (IGNORED) */
-            //         return;
-
+            0x05 | // ENQ
+            0x00 | // NUL
+            0x11 | // XON
+            0x13 | // XOFF
+            0x7F   // DEL
+            => {
+                // ignored
+            }
 
             0x80 | // TODO: PAD
             0x81 | // TODO: HOP
