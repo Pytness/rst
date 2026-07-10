@@ -69,6 +69,8 @@ impl<'a> App<'a> {
             include_font!("CaskaydiaCoveNerdFont-Regular.ttf"),
         );
 
+        term.colors.load_colors();
+
         Self {
             gl_handler: GlHandler::new(template, display_builder),
             app_state: None,
@@ -116,7 +118,6 @@ impl<'a> App<'a> {
                 }
             }
         }
-
         // Released not relevant to shortcuts
         if event.state == ElementState::Released {
             return;
@@ -406,26 +407,12 @@ impl<'a> App<'a> {
     }
 
     fn xdrawglyphfontspecs(&self, glyphs: &[Glyph]) -> Vec<TermGlyph> {
-        fn u32_to_tuple(color: u32) -> (u8, u8, u8) {
-            let color = if !IS_TRUECOL(color) {
-                COLORS[color as usize]
-            } else {
-                color
-            };
-
-            let r = ((color >> 16) & 0xFF) as u8;
-            let g = ((color >> 8) & 0xFF) as u8;
-            let b = (color & 0xFF) as u8;
-
-            (r, g, b)
-        }
-
         glyphs
             .iter()
             .map(|g| TermGlyph {
                 char: g.u,
-                fg_color: u32_to_tuple(g.fg),
-                bg_color: u32_to_tuple(g.bg),
+                fg_color: self.term.colors.get_from_glyph_color(g.fg),
+                bg_color: self.term.colors.get_from_glyph_color(g.bg),
                 font_style: FontStyle::Regular,
             })
             .collect()

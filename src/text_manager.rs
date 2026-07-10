@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 
+use crate::colors::Color;
 use crate::font_registry::FontStyle;
 use crate::win::TermWindow;
 
@@ -19,8 +20,8 @@ pub enum TermGlyphDecoration {}
 #[derive(Clone, Copy)]
 pub struct TermGlyph {
     pub char: char,
-    pub fg_color: (u8, u8, u8),
-    pub bg_color: (u8, u8, u8),
+    pub fg_color: Color,
+    pub bg_color: Color,
     pub font_style: FontStyle,
     // pub mode: TermGlyphMode,
     // pub decoration: TermGlyphDecoration,

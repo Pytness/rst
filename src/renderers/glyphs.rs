@@ -372,9 +372,10 @@ impl<'a> TextRenderer<'a> {
 
             let cell_box = self.text_manager.get_cell_box(row, col + advance_x);
             let bg_color = [
-                term_g.bg_color.0 as f32 / 255.0,
-                term_g.bg_color.1 as f32 / 255.0,
-                term_g.bg_color.2 as f32 / 255.0,
+                term_g.bg_color.red as f32 / 255.0,
+                term_g.bg_color.green as f32 / 255.0,
+                term_g.bg_color.blue as f32 / 255.0,
+                term_g.bg_color.alpha as f32 / 255.0,
             ];
 
             self.clear_section(
@@ -382,7 +383,7 @@ impl<'a> TextRenderer<'a> {
                 cell_box.y,
                 cell_box.width * cell_width,
                 cell_box.height,
-                [bg_color[0], bg_color[1], bg_color[2], 1.0],
+                [bg_color[0], bg_color[1], bg_color[2], bg_color[3]],
             );
 
             advance_x += cell_width;
@@ -487,14 +488,15 @@ impl<'a> TextRenderer<'a> {
                 let y = baseline_y - y_offset - top as f32 + self.font_size_px.descender; // Adjust for descender
 
                 let fg_color = [
-                    term_g.fg_color.0 as f32 / 255.0,
-                    term_g.fg_color.1 as f32 / 255.0,
-                    term_g.fg_color.2 as f32 / 255.0,
+                    term_g.fg_color.red as f32 / 255.0,
+                    term_g.fg_color.green as f32 / 255.0,
+                    term_g.fg_color.blue as f32 / 255.0,
                 ];
+
                 let bg_color = [
-                    term_g.bg_color.0 as f32 / 255.0,
-                    term_g.bg_color.1 as f32 / 255.0,
-                    term_g.bg_color.2 as f32 / 255.0,
+                    term_g.bg_color.red as f32 / 255.0,
+                    term_g.bg_color.green as f32 / 255.0,
+                    term_g.bg_color.blue as f32 / 255.0,
                 ];
 
                 if w > 0.0 && h > 0.0 {

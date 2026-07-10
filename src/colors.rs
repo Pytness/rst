@@ -1,5 +1,6 @@
 use crate::BETWEEN;
 use crate::config::DEFAULTBG;
+use crate::terminal::IS_TRUECOL;
 
 pub const COLORS: [u32; 512] = {
     let mut arr = [0; 512];
@@ -32,7 +33,7 @@ pub const COLORS: [u32; 512] = {
     arr
 };
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Color {
     pub red: u8,
     pub green: u8,
@@ -58,6 +59,15 @@ impl Color {
             green: g,
             blue: b,
             alpha: a,
+        }
+    }
+
+    pub fn from_true_color(color: u32) -> Self {
+        Self {
+            red: ((color >> 16) & 0xFF) as u8,
+            green: ((color >> 8) & 0xFF) as u8,
+            blue: (color & 0xFF) as u8,
+            alpha: 255,
         }
     }
 }
@@ -123,7 +133,7 @@ impl ColorRegistry {
             } else {
                 // TODO: parse the color from `name`
                 // c code: name = colorname[i];
-                name = Some(COLORS[i].to_string().as_str());
+                color = Color::from_true_color(COLORS[i]);
             }
         }
 
@@ -156,5 +166,14 @@ impl ColorRegistry {
         }
 
         return true;
+    }
+
+    /// Use the color from a `Glyph`'s `bg_color`/`fb_color` to load a `Color`
+    pub fn get_from_glyph_color(&self, color: u32) -> Color {
+        if IS_TRUECOL(color) {
+            Color::from_true_color(color)
+        } else {
+            self.colors.get(color as usize).cloned().unwrap_or_default()
+        }
     }
 }
