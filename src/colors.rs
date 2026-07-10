@@ -34,10 +34,10 @@ pub const COLORS: [u32; 512] = {
 
 #[derive(Default, Clone)]
 pub struct Color {
-    pub red: u16,
-    pub green: u16,
-    pub blue: u16,
-    pub alpha: u16,
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+    pub alpha: u8,
 }
 
 pub struct ColorRegistry {
@@ -79,19 +79,19 @@ impl ColorRegistry {
             todo!("Implement color name parsing for '{}'", name);
         }
 
-        const XTERM_SIZE: u16 = 6 * 6 * 6 + 16;
+        const XTERM_SIZE: usize = 6 * 6 * 6 + 16;
 
         if name.is_none() {
             if BETWEEN!(i, 16, 255) {
                 // 256 color
                 if i < XTERM_SIZE as usize {
                     // same colors as xterm
-                    color.red = sixd_to_16bit(((i - 16) / 36) % 6);
-                    color.green = sixd_to_16bit(((i - 16) / 6) % 6);
-                    color.blue = sixd_to_16bit(((i - 16) / 1) % 6);
+                    color.red = (((i - 16) / 36) % 6) as u8;
+                    color.green = (((i - 16) / 6) % 6) as u8;
+                    color.blue = (((i - 16) / 1) % 6) as u8;
                 } else {
                     // TODO: un-magic this
-                    color.red = 0x0808 + 0x0a0a * (i as u16 - XTERM_SIZE);
+                    color.red = (i - XTERM_SIZE) as u8;
                     color.green = color.red;
                     color.blue = color.red;
                 }
@@ -133,14 +133,5 @@ impl ColorRegistry {
         }
 
         return true;
-    }
-}
-
-// TODO: un-magic this
-fn sixd_to_16bit(x: usize) -> u16 {
-    if x == 0 {
-        0
-    } else {
-        0x3737 + 0x2828 * x as u16
     }
 }
