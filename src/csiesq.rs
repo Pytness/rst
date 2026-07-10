@@ -2,6 +2,7 @@ use std::ptr::null_mut;
 
 use crate::config::VTIDEN;
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
+use crate::snprintf;
 use crate::term_state::{CursorMovement, TermMode, TermState};
 use crate::win::TermWindow;
 
@@ -18,19 +19,6 @@ macro_rules! DEFAULT {
     ($src:expr, $value:expr) => {
         if $src == 0 {
             $src = $value;
-        }
-    };
-}
-
-macro_rules! snprintf {
-    ($buffer:expr, $format:expr, $($arg:expr),*) => {
-        unsafe {
-            libc::snprintf(
-                $buffer.as_mut_ptr() as *mut i8,
-                $buffer.len(),
-                $format.as_ptr() as *const i8,
-                $($arg),*
-            )
         }
     };
 }

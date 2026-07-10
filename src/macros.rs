@@ -5,6 +5,20 @@ macro_rules! BETWEEN {
     };
 }
 
+#[macro_export]
+macro_rules! snprintf {
+    ($buffer:expr, $format:expr, $($arg:expr),*) => {
+        unsafe {
+            libc::snprintf(
+                $buffer.as_mut_ptr() as *mut i8,
+                $buffer.len(),
+                $format.as_ptr() as *const i8,
+                $($arg),*
+            )
+        }
+    };
+}
+
 pub(crate) mod macs {
     macro_rules! assets_path {
         ($name: literal) => {
