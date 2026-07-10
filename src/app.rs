@@ -390,6 +390,22 @@ impl<'a> App<'a> {
         let _base: Glyph = Glyph::default();
         let _new: Glyph = Glyph::default();
 
+        let glyphs = line[x1 as usize..x2].to_vec();
+        let glyphs: Vec<TermGlyph> = self.xdrawglyphfontspecs(&glyphs);
+
+        unsafe {
+            self.quad_renderer.as_ref().unwrap().with(|| {
+                let proj = ortho(self.term.state.pixw as f32, self.term.state.pixh as f32);
+
+                self.text_renderer
+                    .as_mut()
+                    .unwrap()
+                    .draw_glyphs(&glyphs, y1 as i32, x1 as i32, &proj);
+            });
+        }
+    }
+
+    fn xdrawglyphfontspecs(&self, glyphs: &[Glyph]) -> Vec<TermGlyph> {
         fn u32_to_tuple(color: u32) -> (u8, u8, u8) {
             let color = if !IS_TRUECOL(color) {
                 COLORS[color as usize]
@@ -404,27 +420,15 @@ impl<'a> App<'a> {
             (r, g, b)
         }
 
-        let glyphs = line[x1 as usize..x2].to_vec();
-        let glyphs: Vec<TermGlyph> = glyphs
-            .into_iter()
+        glyphs
+            .iter()
             .map(|g| TermGlyph {
                 char: g.u,
                 fg_color: u32_to_tuple(g.fg),
                 bg_color: u32_to_tuple(g.bg),
                 font_style: FontStyle::Regular,
             })
-            .collect();
-
-        unsafe {
-            self.quad_renderer.as_ref().unwrap().with(|| {
-                let proj = ortho(self.term.state.pixw as f32, self.term.state.pixh as f32);
-
-                self.text_renderer
-                    .as_mut()
-                    .unwrap()
-                    .draw_glyphs(&glyphs, y1 as i32, x1 as i32, &proj);
-            });
-        }
+            .collect()
     }
 
     fn xstartimagedraw(&self, _dirty: &[bool], _row: usize) {
