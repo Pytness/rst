@@ -873,7 +873,10 @@ impl Term {
     }
 
     fn strhandle(&mut self) {
-        self.strescseq.handle(&mut self.state);
+        let term = self as *mut Self;
+
+        self.strescseq
+            .handle(&mut self.esc, &mut self.state, &mut self.colors, term);
     }
 
     pub fn ttyread(&mut self) -> usize {
