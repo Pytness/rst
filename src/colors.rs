@@ -40,6 +40,18 @@ pub struct Color {
     pub alpha: u8,
 }
 
+impl Color {
+    pub fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self {
+            red: r,
+            green: g,
+            blue: b,
+            alpha: a,
+        }
+    }
+}
+
+#[derive(Default)]
 pub struct ColorRegistry {
     loaded: bool,
     colors: Vec<Color>,

@@ -1,6 +1,7 @@
 use std::ffi::CString;
 use std::ptr::null_mut;
 
+use crate::colors::{Color, ColorRegistry};
 use crate::config::{DEFAULTBG, VTIDEN};
 use crate::csiesq::{CSIEscape, STR_TERM_ST};
 use crate::stresq::StrEscape;
@@ -60,6 +61,7 @@ bitflags! {
 
 #[derive(Default)]
 pub struct Term {
+    pub colors: ColorRegistry,
     pub state: TermState,
     pub strescseq: StrEscape,
     pub csiescseq: CSIEscape,
@@ -838,25 +840,23 @@ impl Term {
             // DECDIXEL
             b'q' => {
                 let transparent = self.csiescseq.narg >= 2 && self.csiescseq.arg[1] == 1;
-                let mut r: u8;
-                let mut g: u8;
-                let mut b: u8;
-                let mut a: u8;
+                let mut r: u8 = 0;
+                let mut g: u8 = 0;
+                let mut b: u8 = 0;
+                let mut a: u8 = 255;
 
                 let bg = self.state.c.attr.bg;
                 if IS_TRUECOL(bg) {
                     r = (bg >> 16 & 0xFF) as u8;
                     g = (bg >> 8 & 0xFF) as u8;
                     b = (bg & 0xFF) as u8;
-                } else {
-                    // xgetcolor(bg, &mut r, &mut g, &mut b);
-
+                } else if let Some(color) = self.colors.get_color(bg as usize) {
                     if bg == DEFAULTBG {
-                        // a = dc.colors[DEFAULTBG as usize].a;
+                        a = (color.alpha & 0xFF) as u8;
                     }
                 }
 
-                // let bgcolor = a << 24 | r << 16 | g << 8 | b;
+                let bgcolor = Color::rgba(r, g, b, a);
 
                 // if (sixel_parser_init(&sixel_st, transparent, (255 << 24), bgcolor, 1, win.cw, win.ch) != 0) {
                 // 	perror("sixel_parser_init() failed");
