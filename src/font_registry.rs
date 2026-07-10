@@ -12,6 +12,8 @@ use fontconfig_sys::statics::LIB;
 use freetype::ffi::FT_Matrix;
 use freetype::ffi::FT_Vector;
 use std::cell::RefCell;
+use std::ffi::CStr;
+use std::ffi::CString;
 use std::mem::ManuallyDrop;
 use std::sync::LazyLock;
 
@@ -155,7 +157,7 @@ impl Drop for FontFace {
     }
 }
 
-fn delpattern(pattern: &mut Pattern, object: &str) {
+fn delpattern(pattern: &mut Pattern, object: &CStr) {
     unsafe {
         (LIB.FcPatternDel)(pattern.as_mut_ptr(), object.as_ptr() as *const i8);
     }
@@ -229,10 +231,12 @@ impl FontRegistry {
     pub fn register_font(&mut self, name: &str, _bytes: &'static [u8]) {
         let fontconfig = Fontconfig::new().expect("failed to create fontconfig instance");
 
+        let pattern_ptr = CString::new(name).unwrap();
+
         let mut pattern = unsafe {
             Pattern::from_pattern(
                 &fontconfig,
-                (LIB.FcNameParse)(name.as_ptr() as *const u8) as *mut FcPattern,
+                (LIB.FcNameParse)(pattern_ptr.as_ptr() as *const u8) as *mut FcPattern,
             )
         };
 
@@ -249,7 +253,7 @@ impl FontRegistry {
             (LIB.FcPatternDel)(pattern.as_mut_ptr(), FC_SLANT.as_ptr() as *const i8);
         }
 
-        delpattern(&mut pattern, FC_SLANT.to_str().unwrap());
+        delpattern(&mut pattern, FC_SLANT);
         pattern.add_integer(FC_SLANT, 0);
         let bold = match_pattern(&pattern);
 
