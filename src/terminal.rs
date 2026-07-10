@@ -1,7 +1,7 @@
 use std::ffi::CString;
 use std::ptr::null_mut;
 
-use crate::config::VTIDEN;
+use crate::config::{DEFAULTBG, VTIDEN};
 use crate::csiesq::{CSIEscape, STR_TERM_ST};
 use crate::stresq::StrEscape;
 use crate::term_state::{CMDFD, CursorMovement, IOFD, PID, SU, TermMode, TermState};
@@ -832,8 +832,43 @@ impl Term {
         self.csiescseq.reset();
     }
 
+    // TODO: implement this
     fn dcshandle(&mut self) {
-        dcshandle();
+        match self.csiescseq.mode[0] {
+            // DECDIXEL
+            b'q' => {
+                let transparent = self.csiescseq.narg >= 2 && self.csiescseq.arg[1] == 1;
+                let mut r: u8;
+                let mut g: u8;
+                let mut b: u8;
+                let mut a: u8;
+
+                let bg = self.state.c.attr.bg;
+                if IS_TRUECOL(bg) {
+                    r = (bg >> 16 & 0xFF) as u8;
+                    g = (bg >> 8 & 0xFF) as u8;
+                    b = (bg & 0xFF) as u8;
+                } else {
+                    // xgetcolor(bg, &mut r, &mut g, &mut b);
+
+                    if bg == DEFAULTBG {
+                        // a = dc.colors[DEFAULTBG as usize].a;
+                    }
+                }
+
+                // let bgcolor = a << 24 | r << 16 | g << 8 | b;
+
+                // if (sixel_parser_init(&sixel_st, transparent, (255 << 24), bgcolor, 1, win.cw, win.ch) != 0) {
+                // 	perror("sixel_parser_init() failed");
+                // }
+
+                self.state.mode.insert(TermMode::Sixel);
+            }
+            _ => {
+                eprintln!("erresc: unknown csi ");
+                self.csiescseq.dump()
+            }
+        }
     }
 
     fn strhandle(&mut self) {
@@ -971,8 +1006,6 @@ impl Term {
         }
     }
 }
-
-fn dcshandle() {}
 
 fn strhandle() {}
 
