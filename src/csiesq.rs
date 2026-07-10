@@ -463,13 +463,13 @@ impl CSIEscape {
 
                     // Report character cell sie in pixels
                     16 => {
-			let len = snprintf!(buffer, "\033[6;%i;%it", state.pixh / state.row, state.pixw / state.col);
+                        let len = snprintf!(buffer, "\x1b[6;%i;%it", state.pixh / state.row, state.pixw / state.col);
                         state.ttywrite_pty(&buffer, len as usize);
                     }
 
                     // Report the size of the text area in characters
                     18 => {
-                        let len = snprintf!(buffer, "\033[8;%i;%it", state.row, state.col);
+                        let len = snprintf!(buffer, "\x1b[8;%i;%it", state.row, state.col);
                         state.ttywrite_pty(&buffer, len as usize);
                     }
 
@@ -495,7 +495,7 @@ impl CSIEscape {
                         };
 
                         let mut buffer = [0u8; 40];
-                        let len = snprintf!(buffer, "\033[?%d;%d$y", self.arg[0], feature_mode);
+                        let len = snprintf!(buffer, "\x1b[?%d;%d$y", self.arg[0], feature_mode);
                         state.ttywrite_pty(&buffer, len as usize);
                     }
                     _ => unknown(),
