@@ -754,6 +754,7 @@ impl Term {
             => {
                 self.state.icharset = (u as u8 - b'(') as u32;
                 self.esc.insert(EscapeState::ESC_ALTCHARSET);
+                return false;
             }
             // IND -- Linefeed
             'D' => {
