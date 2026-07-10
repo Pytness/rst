@@ -32,12 +32,23 @@ pub const COLORS: [u32; 512] = {
     arr
 };
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Color {
     pub red: u8,
     pub green: u8,
     pub blue: u8,
     pub alpha: u8,
+}
+
+impl Default for Color {
+    fn default() -> Self {
+        Self {
+            red: 0,
+            green: 0,
+            blue: 0,
+            alpha: 255,
+        }
+    }
 }
 
 impl Color {
