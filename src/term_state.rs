@@ -901,7 +901,6 @@ impl TermState {
         if width == 0 {
             // Combining character – not properly supported; handle image diacritics
             if self.c.y == 0 && self.c.x == 0 {
-                self.lastc = u;
                 return;
             }
 
@@ -942,8 +941,7 @@ impl TermState {
         }
 
         if self.mode.contains(TermMode::Insert) && (self.c.x + width as usize) < self.col {
-            let cx = self.c.x;
-            let cy = self.c.y;
+            let (cx, cy) = (self.c.x, self.c.y);
             let move_count = self.col - cx - width as usize;
             self.line[cy].copy_within(cx..cx + move_count, cx + width as usize);
             self.line[cy][cx].mode &= !GlyphAttribute::ATTR_WIDE;
@@ -963,10 +961,11 @@ impl TermState {
         self.tsetchar(u, &self.c.attr.clone(), cx, cy);
         self.lastc = u;
 
+        let (cx, cy) = (self.c.x, self.c.y);
         if width == 2 {
-            let (cx, cy) = (self.c.x, self.c.y);
             self.line[cy][cx].mode |= GlyphAttribute::ATTR_WIDE;
             if cx + 1 < self.col {
+                // TOOD: check if mode == ATTR_WIDE is correct here due to being a bitwise field
                 if self.line[cy][cx + 1].mode == GlyphAttribute::ATTR_WIDE && cx + 2 < self.col {
                     self.line[cy][cx + 2].u = ' ';
                     self.line[cy][cx + 2].mode &= !GlyphAttribute::ATTR_WDUMMY;
@@ -976,7 +975,6 @@ impl TermState {
             }
         }
 
-        let (cx, cy) = (self.c.x, self.c.y);
         if cx + (width as usize) < self.col {
             self.tmoveto(cx + width as usize, cy);
         } else {
