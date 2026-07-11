@@ -23,7 +23,17 @@ static FT_LIB: LazyLock<Library> =
 struct Vertex {
     pos: [f32; 2],
     uv: [f32; 2],
+    color: [f32; 3],
+    is_color: f32,
 }
+
+/// Fixed size (in pixels) of the shared glyph atlas texture that every
+/// cached glyph is packed into, so a whole row can be drawn with a single
+/// `draw_arrays` call instead of one draw call (and texture bind) per glyph.
+const ATLAS_SIZE: i32 = 2048;
+/// Gap left between packed glyphs to avoid bilinear filtering sampling
+/// texels from a neighbouring glyph at the edge of its UV rect.
+const ATLAS_PADDING: i32 = 1;
 
 unsafe impl bytemuck::Pod for Vertex {}
 unsafe impl bytemuck::Zeroable for Vertex {}
@@ -38,7 +48,8 @@ pub struct FontSize {
 
 #[derive(Clone, Copy)]
 struct GlyphTexture {
-    tex: glow::NativeTexture,
+    atlas_x: i32,
+    atlas_y: i32,
     width: i32,
     height: i32,
     left: i32,
@@ -59,14 +70,16 @@ pub struct TextRenderer<'a> {
 
     glyphs: HashMap<GlyphKey, GlyphTexture, RandomState>,
 
+    atlas_tex: glow::NativeTexture,
+    atlas_cursor_x: i32,
+    atlas_cursor_y: i32,
+    atlas_shelf_height: i32,
+
     program: glow::NativeProgram,
     vao: glow::NativeVertexArray,
     vbo: glow::NativeBuffer,
 
     u_proj: Option<glow::NativeUniformLocation>,
-    u_color: Option<glow::NativeUniformLocation>,
-    u_background_color: Option<glow::NativeUniformLocation>,
-    u_is_color: Option<glow::NativeUniformLocation>,
     u_tex: Option<glow::NativeUniformLocation>,
     font_size_px: FontSize,
     px_size: f32,
@@ -120,6 +133,9 @@ impl<'a> TextRenderer<'a> {
         );
 
         self.glyphs.clear();
+        self.atlas_cursor_x = 0;
+        self.atlas_cursor_y = 0;
+        self.atlas_shelf_height = 0;
     }
 
     pub unsafe fn new(
@@ -167,10 +183,47 @@ impl<'a> TextRenderer<'a> {
         let vbo = unsafe { gl.create_buffer().unwrap() };
 
         let u_proj = unsafe { gl.get_uniform_location(program, "u_proj") };
-        let u_color = unsafe { gl.get_uniform_location(program, "u_text_color") };
-        let u_background_color = unsafe { gl.get_uniform_location(program, "u_background_color") };
-        let u_is_color = unsafe { gl.get_uniform_location(program, "u_is_color") };
         let u_tex = unsafe { gl.get_uniform_location(program, "u_font") };
+
+        let atlas_tex = unsafe {
+            let atlas_tex = gl
+                .create_texture()
+                .ok()
+                .expect("failed to create glyph atlas texture");
+            gl.bind_texture(glow::TEXTURE_2D, Some(atlas_tex));
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA8 as i32,
+                ATLAS_SIZE,
+                ATLAS_SIZE,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(None),
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_S,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_T,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MIN_FILTER,
+                glow::LINEAR as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MAG_FILTER,
+                glow::LINEAR as i32,
+            );
+            atlas_tex
+        };
 
         let text_manager = TextManager::new(
             font_size_px.width.ceil() as i32,
@@ -185,17 +238,43 @@ impl<'a> TextRenderer<'a> {
             font_registry,
             text_manager,
             glyphs: HashMap::default(),
+            atlas_tex,
+            atlas_cursor_x: 0,
+            atlas_cursor_y: 0,
+            atlas_shelf_height: 0,
             program,
             vao,
             vbo,
             u_proj,
-            u_background_color,
-            u_is_color,
-            u_color,
             u_tex,
             font_size_px,
             px_size: px_size as f32,
         }
+    }
+
+    /// Allocates a `width`x`height` region in the shared glyph atlas using a
+    /// simple shelf packer, returning its (x, y) pixel offset. Panics if the
+    /// atlas runs out of room, since a fixed size was chosen to comfortably
+    /// hold a session's glyph set.
+    fn alloc_atlas_region(&mut self, width: i32, height: i32) -> (i32, i32) {
+        let w = width + ATLAS_PADDING;
+        let h = height + ATLAS_PADDING;
+
+        if self.atlas_cursor_x + w > ATLAS_SIZE {
+            self.atlas_cursor_x = 0;
+            self.atlas_cursor_y += self.atlas_shelf_height;
+            self.atlas_shelf_height = 0;
+        }
+
+        assert!(
+            self.atlas_cursor_y + h <= ATLAS_SIZE,
+            "glyph atlas exhausted (increase ATLAS_SIZE)"
+        );
+
+        let pos = (self.atlas_cursor_x, self.atlas_cursor_y);
+        self.atlas_cursor_x += w;
+        self.atlas_shelf_height = self.atlas_shelf_height.max(h);
+        pos
     }
 
     pub fn clear_section(&self, x: i32, y: i32, width: i32, height: i32, color: [f32; 4]) {
@@ -217,17 +296,18 @@ impl<'a> TextRenderer<'a> {
     /// reference into `self.glyphs` across subsequent `self` accesses.
     fn ensure_glyph(&mut self, glyph: &ShapedGlyph, style: FontStyle) -> Option<&GlyphTexture> {
         let key = (glyph.font_index, glyph.glyph_id, style);
+
         if !self.glyphs.contains_key(&key) {
-            let texture = unsafe { self.load_glyph_texture(glyph, style)? };
+            let texture = unsafe { self.load_glyph_into_atlas(glyph, style)? };
             self.glyphs.insert(key, texture);
         }
 
         self.glyphs.get(&key)
     }
 
-    /// Rasterises a single glyph with FreeType and uploads it to a GL texture.
-    unsafe fn load_glyph_texture(
-        &self,
+    /// Rasterises a single glyph with FreeType and uploads it into the shared glyph atlas.
+    unsafe fn load_glyph_into_atlas(
+        &mut self,
         glyph: &ShapedGlyph,
         style: FontStyle,
     ) -> Option<GlyphTexture> {
@@ -278,13 +358,6 @@ impl<'a> TextRenderer<'a> {
             _ => 1,
         };
 
-        let internal_format = match pixel_mode {
-            PixelMode::Gray => glow::R8,
-            PixelMode::Lcd | PixelMode::LcdV => glow::RGB8,
-            PixelMode::Bgra => glow::RGBA8,
-            _ => glow::RED,
-        } as i32;
-
         let format = match pixel_mode {
             PixelMode::Gray => glow::RED,
             PixelMode::Lcd | PixelMode::LcdV => glow::RGB,
@@ -299,49 +372,34 @@ impl<'a> TextRenderer<'a> {
         };
         let scale = (height as f32 / self.font_size_px.height).max(1.0);
 
+        let (atlas_x, atlas_y) = if width > 0 && height > 0 {
+            self.alloc_atlas_region(width, height)
+        } else {
+            (0, 0)
+        };
+
         unsafe {
             let gl = self.gl.as_ref();
-            let tex = gl.create_texture().ok().expect("failed to create texture");
-            gl.bind_texture(glow::TEXTURE_2D, Some(tex));
 
-            gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, alignment);
-            gl.tex_image_2d(
-                glow::TEXTURE_2D,
-                0,
-                internal_format,
-                width,
-                height,
-                0,
-                format,
-                glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(Some(bitmap.buffer())),
-            );
-
-            gl.generate_mipmap(glow::TEXTURE_2D);
-
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_WRAP_S,
-                glow::CLAMP_TO_BORDER as i32,
-            );
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_WRAP_T,
-                glow::CLAMP_TO_BORDER as i32,
-            );
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MIN_FILTER,
-                glow::LINEAR_MIPMAP_LINEAR as i32,
-            );
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MAG_FILTER,
-                glow::LINEAR as i32,
-            );
+            if width > 0 && height > 0 {
+                gl.bind_texture(glow::TEXTURE_2D, Some(self.atlas_tex));
+                gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, alignment);
+                gl.tex_sub_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    atlas_x,
+                    atlas_y,
+                    width,
+                    height,
+                    format,
+                    glow::UNSIGNED_BYTE,
+                    glow::PixelUnpackData::Slice(Some(bitmap.buffer())),
+                );
+            }
 
             Some(GlyphTexture {
-                tex,
+                atlas_x,
+                atlas_y,
                 width,
                 height,
                 left,
@@ -414,6 +472,8 @@ impl<'a> TextRenderer<'a> {
 
         let stride = size_of::<Vertex>() as i32;
         let uv_offset = offset_of!(Vertex, uv) as i32;
+        let color_offset = offset_of!(Vertex, color) as i32;
+        let is_color_offset = offset_of!(Vertex, is_color) as i32;
 
         let cached_glyphs: Vec<_> = glyphs
             .iter()
@@ -440,6 +500,12 @@ impl<'a> TextRenderer<'a> {
             gl.enable_vertex_attrib_array(1);
             gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, stride, uv_offset);
 
+            gl.enable_vertex_attrib_array(2);
+            gl.vertex_attrib_pointer_f32(2, 3, glow::FLOAT, false, stride, color_offset);
+
+            gl.enable_vertex_attrib_array(3);
+            gl.vertex_attrib_pointer_f32(3, 1, glow::FLOAT, false, stride, is_color_offset);
+
             gl.use_program(Some(self.program));
 
             gl.enable(glow::BLEND);
@@ -454,28 +520,27 @@ impl<'a> TextRenderer<'a> {
             gl.uniform_1_i32(self.u_tex.as_ref(), 0);
 
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
+
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(glow::TEXTURE_2D, Some(self.atlas_tex));
+
+            let mut all_vertices: Vec<Vertex> = Vec::with_capacity(glyphs.len() * 6);
             for (term_g, (shaped_g, cached_g)) in glyphs_iter {
                 let &Some(GlyphTexture {
+                    atlas_x,
+                    atlas_y,
                     left,
                     mut top,
                     width,
                     height,
-                    tex,
                     is_color,
                     scale,
                     matrix,
                     cell_width,
                 }) = cached_g
                 else {
-                    // println!("Warning: glyph ID {} not found in font", shaped_g.glyph_id);
                     continue;
                 };
-
-                // println!(
-                //     "Drawing glyph ({})='{}': left={}, top={}, width={}, height={}, is_color={}, scale={}",
-                //     shaped_g.glyph_id,
-                //     shaped_g.char, left, top, width, height, is_color, scale
-                // );
 
                 // Scale top
                 if is_color {
@@ -497,12 +562,6 @@ impl<'a> TextRenderer<'a> {
                     term_g.fg_color.blue as f32 / 255.0,
                 ];
 
-                let bg_color = [
-                    term_g.bg_color.red as f32 / 255.0,
-                    term_g.bg_color.green as f32 / 255.0,
-                    term_g.bg_color.blue as f32 / 255.0,
-                ];
-
                 if w > 0.0 && h > 0.0 {
                     #[rustfmt::skip]
                     let mut vertex_positions = [
@@ -514,14 +573,13 @@ impl<'a> TextRenderer<'a> {
                         (0.0,   h),
                     ];
 
-                    let vertex_uvs = [
-                        (0.0, 0.0),
-                        (1.0, 0.0),
-                        (1.0, 1.0),
-                        (0.0, 0.0),
-                        (1.0, 1.0),
-                        (0.0, 1.0),
-                    ];
+                    // UV rect of this glyph's region within the shared atlas texture.
+                    let u0 = atlas_x as f32 / ATLAS_SIZE as f32;
+                    let v0 = atlas_y as f32 / ATLAS_SIZE as f32;
+                    let u1 = (atlas_x + width) as f32 / ATLAS_SIZE as f32;
+                    let v1 = (atlas_y + height) as f32 / ATLAS_SIZE as f32;
+
+                    let vertex_uvs = [(u0, v0), (u1, v0), (u1, v1), (u0, v0), (u1, v1), (u0, v1)];
 
                     let shear = if matrix.xx != 0.0 {
                         (matrix.xy / matrix.xx) as f32
@@ -555,52 +613,16 @@ impl<'a> TextRenderer<'a> {
                     vertex_positions =
                         vertex_positions.map(|(local_x, local_y)| (local_x + x, local_y + y));
 
-                    let vertices: Vec<Vertex> = vertex_positions
-                        .iter()
-                        .zip(vertex_uvs.iter())
-                        .map(|((px, py), (u, v))| Vertex {
+                    let is_color_f = if is_color { 1.0 } else { 0.0 };
+
+                    all_vertices.extend(vertex_positions.iter().zip(vertex_uvs.iter()).map(
+                        |((px, py), (u, v))| Vertex {
                             pos: [*px, *py],
                             uv: [*u, *v],
-                        })
-                        .collect();
-
-                    let gl = self.gl.as_ref();
-
-                    gl.uniform_3_f32(self.u_color.as_ref(), fg_color[0], fg_color[1], fg_color[2]);
-                    gl.uniform_3_f32(
-                        self.u_background_color.as_ref(),
-                        bg_color[0],
-                        bg_color[1],
-                        bg_color[2],
-                    );
-                    gl.active_texture(glow::TEXTURE0);
-                    gl.bind_texture(glow::TEXTURE_2D, Some(tex));
-
-                    gl.buffer_data_u8_slice(
-                        glow::ARRAY_BUFFER,
-                        bytemuck::cast_slice(&vertices),
-                        glow::DYNAMIC_DRAW,
-                    );
-                    gl.program_uniform_1_u32(
-                        self.program,
-                        self.u_is_color.as_ref(),
-                        if is_color { 1 } else { 0 },
-                    );
-
-                    // FIX:
-                    // Limit drawing to the row to prevent glyphs from bleeding into adjacent rows
-                    // while allowing ligatures and diacritics to render correctly
-                    // within neighbouring cells.
-                    // gl.enable(glow::SCISSOR_TEST);
-                    // gl.scissor(
-                    //     pen_x as i32,
-                    //     self.text_manager.window_height - cell_box.y,
-                    //     width + left,
-                    //     cell_box.height,
-                    // );
-
-                    gl.draw_arrays(glow::TRIANGLES, 0, 6);
-                    gl.disable(glow::SCISSOR_TEST);
+                            color: fg_color,
+                            is_color: is_color_f,
+                        },
+                    ));
                 }
 
                 // NOTE: due to the way text is rendered in a terminal (in a fixed grid),
@@ -608,7 +630,27 @@ impl<'a> TextRenderer<'a> {
                 pen_x += self.font_size_px.width * cell_width as f32;
             }
 
-            let gl = self.gl.as_ref();
+            gl.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                bytemuck::cast_slice(&all_vertices),
+                glow::DYNAMIC_DRAW,
+            );
+
+            // FIX:
+            // Limit drawing to the row to prevent glyphs from bleeding into adjacent rows
+            // while allowing ligatures and diacritics to render correctly
+            // within neighbouring cells.
+            // gl.enable(glow::SCISSOR_TEST);
+            // gl.scissor(
+            //     pen_x as i32,
+            //     self.text_manager.window_height - cell_box.y,
+            //     width + left,
+            //     cell_box.height,
+            // );
+
+            gl.draw_arrays(glow::TRIANGLES, 0, all_vertices.len() as i32);
+            gl.disable(glow::SCISSOR_TEST);
+
             gl.bind_vertex_array(None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
             gl.use_program(None);
@@ -625,9 +667,7 @@ impl<'a> Drop for TextRenderer<'a> {
         unsafe {
             let gl = self.gl.as_ref();
 
-            for glyph in self.glyphs.values() {
-                gl.delete_texture(glyph.tex);
-            }
+            gl.delete_texture(self.atlas_tex);
 
             gl.delete_vertex_array(self.vao);
             gl.delete_buffer(self.vbo);
