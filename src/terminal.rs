@@ -320,8 +320,6 @@ impl Term {
                     let count = if n < lim { n } else { lim };
                     let r = libc::write(CMDFD, s, count);
 
-                    println!("write returned {}, {}", r, n);
-
                     if r < 0 {
                         panic!("write failed on tty: {}", std::io::Error::last_os_error());
                     }
@@ -880,7 +878,6 @@ impl Term {
     }
 
     pub fn ttyread(&mut self) -> usize {
-        println!("ttyread called");
         const BUF_SIZE: usize = 8192;
         static mut BUF: [u8; BUF_SIZE] = unsafe { std::mem::zeroed() };
         static mut BUF_WRITTEN: usize = 0;
@@ -894,7 +891,6 @@ impl Term {
 
         unsafe {
             // append read bytes to unprocessed bytes
-            println!("ttyread about to read");
             let ret = if TWRITE_ABORTED {
                 1
             } else {
