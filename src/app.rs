@@ -18,13 +18,14 @@ use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
 use crate::colors::COLORS;
-use crate::config::{self, MAXLATENCY};
+use crate::config::{self, MAXLATENCY, MINLATENCY};
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::keymap::kmap;
 use crate::macros::macs::include_font;
 use crate::renderers::{self, TextRenderer};
+use crate::term_state::SU;
 use crate::terminal::{IS_TRUECOL, TWRITE_ABORTED, Term};
 use crate::text_manager::TermGlyph;
 use crate::win::WinMode;
@@ -45,6 +46,7 @@ pub struct App<'a> {
     text_renderer: Option<TextRenderer<'a>>,
     quad_renderer: Option<renderers::QuadRenderer>,
     conf_font_size_px: u32,
+    loop_timeout: f64,
 
     term: Term,
     ttyfd: i32,
@@ -76,11 +78,13 @@ impl<'a> App<'a> {
             app_state: None,
             gl: None,
 
+            keyboard_modifiers: Default::default(),
+
             font_registry,
             text_renderer: None,
             quad_renderer: None,
             conf_font_size_px: 16,
-            keyboard_modifiers: Default::default(),
+            loop_timeout: 0.0,
 
             term,
             ttyfd,
@@ -345,8 +349,12 @@ impl<'a> App<'a> {
             }
 
             self.term.state.dirty[y] = false;
-            let line = &self.term.state.line[y].clone();
-            self.xdrawline(line, x1, y, x2);
+            let line = self.term.state.line[y].as_ptr_range();
+            let safe_line = unsafe {
+                std::slice::from_raw_parts(line.start, line.end.offset_from(line.start) as usize)
+            };
+
+            self.xdrawline(safe_line, x1, y, x2);
         }
 
         self.xfinishimagedraw();
@@ -391,7 +399,7 @@ impl<'a> App<'a> {
         let _base: Glyph = Glyph::default();
         let _new: Glyph = Glyph::default();
 
-        let glyphs = line[x1 as usize..x2].to_vec();
+        let glyphs = &line[x1 as usize..x2];
         let glyphs: Vec<TermGlyph> = self.xdrawglyphfontspecs(&glyphs);
 
         unsafe {
@@ -509,12 +517,29 @@ impl<'a> ApplicationHandler for App<'a> {
     }
 
     fn new_events(&mut self, event_loop: &ActiveEventLoop, _cause: winit::event::StartCause) {
-        let timeout: f64 = MAXLATENCY as f64 / 1000.0;
+        let even_start = Instant::now();
+        if ttyread_pending() {
+            self.loop_timeout = 0.0;
+        }
+
+        // TODO:
+        // /* Decrease the timeout if there are active animations. */
+        // if (graphics_next_redraw_delay != INT_MAX && IS_SET(MODE_VISIBLE)) {
+        // 	timeout = timeout < 0 ? graphics_next_redraw_delay : MIN(timeout, graphics_next_redraw_delay);
+        // }
+
         unsafe {
             // TODO: implement missing timeout handling
-            let tv: libc::timespec = libc::timespec {
+            let timeout = self.loop_timeout;
+            let seltv: libc::timespec = libc::timespec {
                 tv_sec: timeout as libc::time_t,
                 tv_nsec: ((timeout - timeout.floor()) * 1e9) as libc::c_long,
+            };
+
+            let tv = if self.loop_timeout >= 0.0 {
+                &seltv
+            } else {
+                std::ptr::null()
             };
 
             libc::FD_ZERO(&mut self.rfd);
@@ -525,7 +550,7 @@ impl<'a> ApplicationHandler for App<'a> {
                 &mut self.rfd,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                &tv,
+                tv,
                 std::ptr::null(),
             ) < 0
             {
@@ -536,12 +561,15 @@ impl<'a> ApplicationHandler for App<'a> {
 
             let ttyin = libc::FD_ISSET(self.ttyfd, &mut self.rfd);
 
-            if ttyin || TWRITE_ABORTED {
+            if ttyin || ttyread_pending() {
                 self.term.ttyread();
             }
 
-            // set winit event loop to rerun in 10ms
-            let timeout = std::time::Duration::from_millis(MAXLATENCY as u64);
+            if unsafe { SU } != 0 {
+                self.loop_timeout = MINLATENCY as f64;
+            }
+
+            let timeout = std::time::Duration::from_millis(2 as u64);
             let control = ControlFlow::WaitUntil(std::time::Instant::now() + timeout);
             event_loop.set_control_flow(control);
         }
@@ -607,4 +635,8 @@ fn ortho(width: f32, height: f32) -> [f32; 16] {
         0.0, 0.0, -1.0, 0.0,
         -1.0, 1.0, 0.0, 1.0,
     ];
+}
+
+fn ttyread_pending() -> bool {
+    unsafe { TWRITE_ABORTED }
 }
