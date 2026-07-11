@@ -365,11 +365,7 @@ impl<'a> TextRenderer<'a> {
             _ => glow::RED,
         };
 
-        let cell_width = if is_color {
-            2
-        } else {
-            unicode_width::UnicodeWidthChar::width(glyph.char).unwrap_or(1)
-        };
+        let cell_width = unicode_width::UnicodeWidthChar::width(glyph.char).unwrap_or(1);
         let scale = (height as f32 / self.font_size_px.height).max(1.0);
 
         let (atlas_x, atlas_y) = if width > 0 && height > 0 {

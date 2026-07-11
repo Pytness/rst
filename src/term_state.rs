@@ -891,7 +891,7 @@ impl TermState {
         let width = if (u as u32) < 127 && !self.mode.contains(TermMode::Utf8) {
             1
         } else {
-            u.width().unwrap_or(0)
+            unicode_width::UnicodeWidthChar::width(u).unwrap_or(1)
         };
 
         if self.selected(self.c.x, self.c.y) {
