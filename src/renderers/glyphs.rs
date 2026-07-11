@@ -415,16 +415,16 @@ impl<'a> TextRenderer<'a> {
         let stride = size_of::<Vertex>() as i32;
         let uv_offset = offset_of!(Vertex, uv) as i32;
 
-        let glyphs_iter = glyphs.iter().zip(shaped.iter());
-
-        let glyph_widths: Vec<usize> = shaped
+        let cached_glyphs: Vec<_> = glyphs
             .iter()
-            .zip(glyphs.iter())
-            .map(|(s, g)| {
-                self.ensure_glyph(s, g.font_style)
-                    .map(|t| t.cell_width)
-                    .unwrap_or(1)
-            })
+            .zip(shaped.iter())
+            .map(|(term_g, shaped_g)| self.ensure_glyph(shaped_g, term_g.font_style).cloned())
+            .collect();
+
+        let glyphs_iter = glyphs.iter().zip(shaped.iter().zip(cached_glyphs.iter()));
+        let glyph_widths: Vec<usize> = cached_glyphs
+            .iter()
+            .map(|g| g.map(|t| t.cell_width).unwrap_or(1))
             .collect();
 
         unsafe {
@@ -454,8 +454,8 @@ impl<'a> TextRenderer<'a> {
             gl.uniform_1_i32(self.u_tex.as_ref(), 0);
 
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
-            for (term_g, shaped_g) in glyphs_iter {
-                let Some(&GlyphTexture {
+            for (term_g, (shaped_g, cached_g)) in glyphs_iter {
+                let &Some(GlyphTexture {
                     left,
                     mut top,
                     width,
@@ -465,7 +465,7 @@ impl<'a> TextRenderer<'a> {
                     scale,
                     matrix,
                     cell_width,
-                }) = self.ensure_glyph(shaped_g, term_g.font_style)
+                }) = cached_g
                 else {
                     // println!("Warning: glyph ID {} not found in font", shaped_g.glyph_id);
                     continue;
