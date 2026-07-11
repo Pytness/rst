@@ -1066,6 +1066,7 @@ dependencies = [
 name = "rst"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "bitflags 2.11.1",
  "bytemuck",
  "fontconfig",

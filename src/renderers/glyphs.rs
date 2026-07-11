@@ -1,3 +1,4 @@
+use ahash::{AHasher, RandomState};
 use std::collections::HashMap;
 use std::mem::{offset_of, size_of};
 use std::rc::Rc;
@@ -47,13 +48,15 @@ struct GlyphTexture {
     cell_width: usize,
 }
 
+type GlyphKey = (usize, u32, FontStyle);
+
 pub struct TextRenderer<'a> {
     gl: Rc<glow::Context>,
     font_registry: &'a FontRegistry,
 
     pub text_manager: TextManager,
 
-    glyphs: HashMap<(usize, u32, FontStyle), GlyphTexture>,
+    glyphs: HashMap<GlyphKey, GlyphTexture, RandomState>,
 
     program: glow::NativeProgram,
     vao: glow::NativeVertexArray,
@@ -180,7 +183,7 @@ impl<'a> TextRenderer<'a> {
             gl,
             font_registry,
             text_manager,
-            glyphs: HashMap::new(),
+            glyphs: HashMap::default(),
             program,
             vao,
             vbo,
