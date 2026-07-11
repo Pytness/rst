@@ -12,6 +12,7 @@ use glow::HasContext;
 use crate::font_registry::{FontRegistry, FontStyle, ShapedGlyph};
 use crate::macros::macs::include_shader;
 use crate::text_manager::{TermGlyph, TextManager};
+use crate::time_this;
 use crate::win::TermWindow;
 
 static FT_LIB: LazyLock<Library> =

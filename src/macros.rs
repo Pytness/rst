@@ -19,6 +19,17 @@ macro_rules! snprintf {
     };
 }
 
+#[macro_export]
+macro_rules! time_this {
+    ($name:expr, $block:block) => {{
+        let start = std::time::Instant::now();
+        let result = { $block };
+        let duration = start.elapsed();
+        println!("{} took {:?}", $name, duration);
+        result
+    }};
+}
+
 pub(crate) mod macs {
     macro_rules! assets_path {
         ($name: literal) => {

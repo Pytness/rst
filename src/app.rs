@@ -28,6 +28,7 @@ use crate::renderers::{self, TextRenderer};
 use crate::term_state::SU;
 use crate::terminal::{IS_TRUECOL, TWRITE_ABORTED, Term};
 use crate::text_manager::TermGlyph;
+use crate::time_this;
 use crate::win::WinMode;
 
 pub struct AppState {
@@ -574,7 +575,16 @@ impl<'a> ApplicationHandler for App<'a> {
             event_loop.set_control_flow(control);
         }
 
+        let draw_start = Instant::now();
         self.draw();
+
+        let end = Instant::now();
+
+        println!(
+            "Event loop iteration took {} ms, draw took {} ms",
+            (end - even_start).as_millis(),
+            (end - draw_start).as_millis()
+        );
 
         if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
             window.request_redraw();
