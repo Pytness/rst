@@ -72,6 +72,11 @@ impl<'a> App<'a> {
             include_font!("CaskaydiaCoveNerdFont-Regular.ttf"),
         );
 
+        font_registry.register_font(
+            "Noto Color Emoji:size=10:antialias=true:autohint=true",
+            include_font!("SymbolsNerdFont-Regular.ttf"),
+        );
+
         term.colors.load_colors();
 
         Self {
