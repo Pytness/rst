@@ -355,17 +355,9 @@ impl FontRegistry {
     pub fn get_char_index(&self, char_code: char) -> Option<(usize, u32)> {
         for (font_index, entry) in self.fonts.iter().enumerate() {
             let glyph_id = entry.regular().ft_face.get_char_index(char_code as usize);
-            // println!(
-            //     "Font '{}': char code '{}' (U+{:04X}) maps to glyph ID {:?}",
-            //     entry.name, char_code, char_code as u32, glyph_id
-            // );
 
             if let Some(glyph_id) = glyph_id {
                 if glyph_id != 0 {
-                    println!(
-                        "Found glyph ID {} for char code '{}' in font '{}'",
-                        glyph_id, char_code, entry.name
-                    );
                     return Some((font_index, glyph_id));
                 }
             }
