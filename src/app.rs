@@ -585,11 +585,11 @@ impl<'a> ApplicationHandler for App<'a> {
 
         let end = Instant::now();
 
-        println!(
-            "Event loop iteration took {} ms, draw took {} ms",
-            (end - even_start).as_millis(),
-            (end - draw_start).as_millis()
-        );
+        // println!(
+        //     "Event loop iteration took {} ms, draw took {} ms",
+        //     (end - even_start).as_millis(),
+        //     (end - draw_start).as_millis()
+        // );
 
         if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
             window.request_redraw();
