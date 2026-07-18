@@ -460,23 +460,12 @@ impl<'a> App<'a> {
                     fg_color = bg_color;
                 }
 
-                let font_style = if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT)
-                    && g.mode.contains(GlyphAttribute::ATTR_ITALIC)
-                {
-                    FontStyle::ItalicBold
-                } else if g.mode.contains(GlyphAttribute::ATTR_ITALIC) {
-                    FontStyle::Italic
-                } else if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT) {
-                    FontStyle::Bold
-                } else {
-                    FontStyle::Regular
-                };
 
                 TermGlyph {
                     char: g.u,
                     fg_color,
                     bg_color,
-                    font_style,
+                    font_style: glyph_to_font_style(g),
                 }
             })
             .collect()
@@ -778,4 +767,18 @@ fn ortho(width: f32, height: f32) -> [f32; 16] {
 
 fn ttyread_pending() -> bool {
     unsafe { TWRITE_ABORTED }
+}
+
+fn glyph_to_font_style(g: &Glyph) -> FontStyle {
+    if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT)
+        && g.mode.contains(GlyphAttribute::ATTR_ITALIC)
+    {
+        FontStyle::ItalicBold
+    } else if g.mode.contains(GlyphAttribute::ATTR_ITALIC) {
+        FontStyle::Italic
+    } else if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT) {
+        FontStyle::Bold
+    } else {
+        FontStyle::Regular
+    }
 }
