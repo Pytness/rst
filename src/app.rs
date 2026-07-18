@@ -440,8 +440,15 @@ impl<'a> App<'a> {
         glyphs
             .iter()
             .map(|g| {
-                let mut fg_color = self.term.colors.get_from_glyph_color(g.fg);
-                let mut bg_color = self.term.colors.get_from_glyph_color(g.bg);
+                let mut fg = g.fg;
+                let bg = g.bg;
+
+                if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT) && fg < 7 {
+                    fg += 8;
+                }
+
+                let mut fg_color = self.term.colors.get_from_glyph_color(fg);
+                let mut bg_color = self.term.colors.get_from_glyph_color(bg);
 
                 if g.mode.contains(GlyphAttribute::ATTR_REVERSE) {
                     std::mem::swap(&mut fg_color, &mut bg_color);
@@ -453,11 +460,23 @@ impl<'a> App<'a> {
                     fg_color = bg_color;
                 }
 
+                let font_style = if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT)
+                    && g.mode.contains(GlyphAttribute::ATTR_ITALIC)
+                {
+                    FontStyle::ItalicBold
+                } else if g.mode.contains(GlyphAttribute::ATTR_ITALIC) {
+                    FontStyle::Italic
+                } else if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT) {
+                    FontStyle::Bold
+                } else {
+                    FontStyle::Regular
+                };
+
                 TermGlyph {
                     char: g.u,
                     fg_color,
                     bg_color,
-                    font_style: FontStyle::Regular,
+                    font_style,
                 }
             })
             .collect()
