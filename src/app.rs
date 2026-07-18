@@ -460,6 +460,9 @@ impl<'a> App<'a> {
                     fg_color = bg_color;
                 }
 
+                if g.mode.contains(GlyphAttribute::ATTR_INVISIBLE) {
+                    fg_color = bg_color;
+                }
 
                 TermGlyph {
                     char: g.u,
