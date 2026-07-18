@@ -1,8 +1,9 @@
 use std::ffi::{CString, c_void};
 use std::num::NonZeroU32;
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use bitflags::Flags;
 use glow::HasContext;
 use glutin::config::ConfigTemplateBuilder;
 use glutin::display::GetGlDisplay;
@@ -49,9 +50,19 @@ pub struct App<'a> {
     conf_font_size_px: u32,
     loop_timeout: f64,
 
+    // Mirrors st's `drawing`/`trigger`: once tty or window input starts a
+    // burst, we hold off redrawing until things go idle (or maxlatency runs
+    // out) to avoid tearing/flicker on rapid output.
+    drawing: bool,
+    trigger: Instant,
+    // Mirrors st's `xev`: set from `window_event` for any real window event
+    // (but not our own RedrawRequested), consumed at the top of `new_events`.
+    xev_pending: bool,
+
     term: Term,
     ttyfd: i32,
     rfd: libc::fd_set,
+    last_blink: Instant,
 }
 
 impl<'a> App<'a> {
@@ -92,9 +103,14 @@ impl<'a> App<'a> {
             conf_font_size_px: 16,
             loop_timeout: 0.0,
 
+            drawing: false,
+            trigger: Instant::now(),
+            xev_pending: false,
+
             term,
             ttyfd,
             rfd: unsafe { std::mem::zeroed() },
+            last_blink: Instant::now(),
         }
     }
 
@@ -423,11 +439,26 @@ impl<'a> App<'a> {
     fn xdrawglyphfontspecs(&self, glyphs: &[Glyph]) -> Vec<TermGlyph> {
         glyphs
             .iter()
-            .map(|g| TermGlyph {
-                char: g.u,
-                fg_color: self.term.colors.get_from_glyph_color(g.fg),
-                bg_color: self.term.colors.get_from_glyph_color(g.bg),
-                font_style: FontStyle::Regular,
+            .map(|g| {
+                let mut fg_color = self.term.colors.get_from_glyph_color(g.fg);
+                let mut bg_color = self.term.colors.get_from_glyph_color(g.bg);
+
+                if g.mode.contains(GlyphAttribute::ATTR_REVERSE) {
+                    std::mem::swap(&mut fg_color, &mut bg_color);
+                }
+
+                if g.mode.contains(GlyphAttribute::ATTR_BLINK)
+                    && self.term.win.mode.contains(WinMode::Blink)
+                {
+                    fg_color = bg_color;
+                }
+
+                TermGlyph {
+                    char: g.u,
+                    fg_color,
+                    bg_color,
+                    font_style: FontStyle::Regular,
+                }
             })
             .collect()
     }
@@ -438,6 +469,21 @@ impl<'a> App<'a> {
 
     fn xfinishimagedraw(&self) {
         // todo!()
+    }
+
+    /// Arranges for `new_events` to run again after `timeout_ms`, clamping
+    /// negative values (st's "block forever") to `MINLATENCY` since we must
+    /// keep polling the tty fd ourselves.
+    fn schedule(&self, event_loop: &ActiveEventLoop, now: Instant, timeout_ms: f64) {
+        let wait_ms = if timeout_ms < 0.0 {
+            MINLATENCY as f64
+        } else {
+            timeout_ms
+        };
+
+        event_loop.set_control_flow(ControlFlow::WaitUntil(
+            now + Duration::from_secs_f64(wait_ms / 1e3),
+        ));
     }
 }
 
@@ -523,7 +569,6 @@ impl<'a> ApplicationHandler for App<'a> {
     }
 
     fn new_events(&mut self, event_loop: &ActiveEventLoop, _cause: winit::event::StartCause) {
-        let even_start = Instant::now();
         if ttyread_pending() {
             self.loop_timeout = 0.0;
         }
@@ -534,66 +579,119 @@ impl<'a> ApplicationHandler for App<'a> {
         // 	timeout = timeout < 0 ? graphics_next_redraw_delay : MIN(timeout, graphics_next_redraw_delay);
         // }
 
-        unsafe {
-            // TODO: implement missing timeout handling
-            let timeout = self.loop_timeout;
-            let seltv: libc::timespec = libc::timespec {
-                tv_sec: timeout as libc::time_t,
-                tv_nsec: ((timeout - timeout.floor()) * 1e9) as libc::c_long,
-            };
+        // Unlike st, winit owns the X/Wayland connection itself; there's no
+        // xfd to add to this select, so (unlike st) we can never block here
+        // indefinitely or we'd freeze resize/keyboard handling until the next
+        // tty byte. Bound the wait the same way an idle st would eventually
+        // wake up on XPending().
+        let timeout = if self.loop_timeout < 0.0 {
+            MINLATENCY as f64
+        } else {
+            self.loop_timeout
+        };
 
-            let tv = if self.loop_timeout >= 0.0 {
-                &seltv
-            } else {
-                std::ptr::null()
-            };
+        let secs = (timeout / 1e3).trunc();
+        let seltv = libc::timespec {
+            tv_sec: secs as libc::time_t,
+            tv_nsec: ((timeout - secs * 1e3) * 1e6) as libc::c_long,
+        };
 
+        let ttyin = unsafe {
             libc::FD_ZERO(&mut self.rfd);
             libc::FD_SET(self.ttyfd, &mut self.rfd);
 
-            if libc::pselect(
+            let ready = libc::pselect(
                 self.ttyfd + 1,
                 &mut self.rfd,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                tv,
+                &seltv,
                 std::ptr::null(),
-            ) < 0
-            {
+            );
+
+            if ready < 0 {
                 if *libc::__errno_location() != libc::EINTR {
                     panic!("pselect failed: {}", std::io::Error::last_os_error());
                 }
+                // interrupted by a signal: retry immediately, like C's `continue`
+                event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now()));
+                return;
             }
 
-            let ttyin = libc::FD_ISSET(self.ttyfd, &mut self.rfd);
+            libc::FD_ISSET(self.ttyfd, &mut self.rfd) || ttyread_pending()
+        };
 
-            if ttyin || ttyread_pending() {
-                self.term.ttyread();
-            }
+        let now = Instant::now();
 
-            if unsafe { SU } != 0 {
-                self.loop_timeout = MINLATENCY as f64;
-            }
-
-            let timeout = std::time::Duration::from_millis(2 as u64);
-            let control = ControlFlow::WaitUntil(std::time::Instant::now() + timeout);
-            event_loop.set_control_flow(control);
+        if ttyin {
+            self.term.ttyread();
         }
 
-        let draw_start = Instant::now();
+        // `xev` in st is set whenever any X event was pumped this
+        // iteration; here that's whatever window_event saw since we last
+        // looked.
+        let xev = std::mem::replace(&mut self.xev_pending, false);
+
+        // To reduce flicker and tearing, when new content or an event
+        // triggers drawing, first wait a bit to make sure we got everything;
+        // if nothing new arrives, draw. Retry with shorter and shorter
+        // periods, drawing even without idle after maxlatency ms.
+        if ttyin || xev {
+            if !self.drawing {
+                self.trigger = now;
+                self.drawing = true;
+
+                if self.term.win.mode.contains(WinMode::Blink) {
+                    self.term.win.mode.toggle(WinMode::Blink);
+                }
+
+                self.last_blink = now;
+            }
+
+            let elapsed_ms = (now - self.trigger).as_secs_f64() * 1e3;
+            self.loop_timeout =
+                (MAXLATENCY as f64 - elapsed_ms) / MAXLATENCY as f64 * MINLATENCY as f64;
+
+            if self.loop_timeout > 0.0 {
+                // we have time, try to find idle
+                self.schedule(event_loop, now, self.loop_timeout);
+                return;
+            }
+        }
+
+        // on synchronized-update draw-suspension: don't reset `drawing` so we
+        // draw ASAP once we can.
+        // NOTE: `tinsync`'s elapsed-time check isn't
+        // ported yet (no `sutv`), and DECSET 2026 (`tsetmode`) is still a
+        // stub, so SU never actually becomes nonzero today.
+        if unsafe { SU } != 0 {
+            self.loop_timeout = MINLATENCY as f64;
+            self.schedule(event_loop, now, self.loop_timeout);
+            return;
+        }
+
+        // idle detected or maxlatency exhausted -> draw
+        self.loop_timeout = -1.0;
+
+        if config::BLINK_TIMEOUT > 0 && self.term.state.tattrset(GlyphAttribute::ATTR_BLINK) {
+            let elapsed_ms = (now - self.last_blink).as_secs_f64() * 1e3;
+            if elapsed_ms >= config::BLINK_TIMEOUT as f64 {
+                self.term.win.mode.toggle(WinMode::Blink);
+                self.last_blink = now;
+                self.term.state.tsetdirtattr(GlyphAttribute::ATTR_BLINK);
+
+                self.loop_timeout = config::BLINK_TIMEOUT as f64;
+            }
+        }
+
         self.draw();
-
-        let end = Instant::now();
-
-        // println!(
-        //     "Event loop iteration took {} ms, draw took {} ms",
-        //     (end - even_start).as_millis(),
-        //     (end - draw_start).as_millis()
-        // );
+        self.drawing = false;
 
         if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
             window.request_redraw();
         }
+
+        self.schedule(event_loop, now, self.loop_timeout);
     }
 
     fn window_event(
@@ -602,6 +700,13 @@ impl<'a> ApplicationHandler for App<'a> {
         _id: WindowId,
         event: winit::event::WindowEvent,
     ) {
+        // Like st's `xev`: any real window event should re-arm the drawing
+        // debounce in `new_events`. RedrawRequested is excluded since we
+        // generate it ourselves after drawing, not an external event.
+        if !matches!(event, WindowEvent::RedrawRequested) {
+            self.xev_pending = true;
+        }
+
         match event {
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.keyboard_modifiers = modifiers.state();
