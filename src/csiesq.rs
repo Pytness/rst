@@ -60,6 +60,7 @@ impl CSIEscape {
         unsafe {
             if *p == b'?' {
                 self.private = true;
+                p = p.add(1);
             }
             self.buf[self.len] = 0;
 
@@ -92,6 +93,7 @@ impl CSIEscape {
             }
 
             self.mode[0] = *p;
+            p = p.add(1);
             self.mode[1] = if p < self.buf.as_ptr().add(self.len) {
                 *p
             } else {
