@@ -64,3 +64,9 @@ pub const TERM: &CStr = c"xterm-256color";
 pub const BORDERPX: u32 = 4;
 
 pub const BLINK_TIMEOUT: u64 = 500;
+
+pub const FONTS: &[&str] = &[
+    "CaskaydiaCove Nerd Font:size=10:antialias=true:autohint=true",
+    "Symbols Nerd Font:size=10:antialias=true:autohint=true",
+    "Noto Color Emoji:size=10:antialias=true:autohint=true",
+];

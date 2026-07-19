@@ -228,7 +228,7 @@ impl FontRegistry {
         }
     }
 
-    pub fn register_font(&mut self, name: &str, _bytes: &'static [u8]) {
+    pub fn register_font(&mut self, name: &str) {
         let fontconfig = Fontconfig::new().expect("failed to create fontconfig instance");
 
         let pattern_ptr = CString::new(name).unwrap();

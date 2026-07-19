@@ -78,15 +78,9 @@ impl<'a> App<'a> {
 
         let mut font_registry = FontRegistry::new();
 
-        font_registry.register_font(
-            "CaskaydiaCove Nerd Font:size=10:antialias=true:autohint=true",
-            include_font!("CaskaydiaCoveNerdFont-Regular.ttf"),
-        );
-
-        font_registry.register_font(
-            "Noto Color Emoji:size=10:antialias=true:autohint=true",
-            include_font!("SymbolsNerdFont-Regular.ttf"),
-        );
+        for font in config::FONTS {
+            font_registry.register_font(font);
+        }
 
         term.colors.load_colors();
 
