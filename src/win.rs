@@ -19,7 +19,7 @@ bitflags! {
         const Focus       = 1 << 13;
         const MouseX10    = 1 << 14;
         const MouseMany   = 1 << 15;
-        const BRCKTPASTE  = 1 << 16;
+        const BracketedPaste  = 1 << 16;
         const NumLock     = 1 << 17;
 
         const MODE_MOUSE =

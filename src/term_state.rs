@@ -6,6 +6,8 @@ use crate::boxdraw::boxdraw::isboxdraw;
 use crate::config;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::kitty::{tdefcolor, tsetdecorcolor, tsetdecorstyle};
+use crate::terminal::Term;
+use crate::win::WinMode;
 
 pub static mut IOFD: i32 = 1;
 pub static mut CMDFD: i32 = 0;
@@ -124,6 +126,7 @@ pub struct Image {
 
 #[derive(Default)]
 pub struct TermState {
+    pub _term_ptr: *mut Term,   // pointer to the terminal state
     pub row: usize,             // number of rows
     pub col: usize,             // number of columns
     pub pixw: usize,            // width of the text area in pixels
@@ -747,6 +750,13 @@ impl TermState {
         return i;
     }
 
+    fn tsync_begin(&mut self) {
+        // clock_gettime(CLOCK_MONOTONIC, &sutv);
+        // su = 1;
+
+        return;
+    }
+
     fn tsync_end(&self) {
         // static void tsync_end() { su = 0; }
         // int tinsync(uint timeout) {
@@ -1030,7 +1040,203 @@ impl TermState {
         // }
     }
 
-    pub fn tsetmode(&self, _private: bool, _set: i32, _args: &[i32], _narg: usize) {}
+    pub fn tsetmode(&mut self, private: bool, set: bool, _args: &[i32], _narg: usize) {
+        let term = unsafe { &mut *self._term_ptr };
+
+        for arg in _args {
+            if !private {
+                match arg {
+                    // Error (IGNORED)
+                    0 => {}
+
+                    // kdb lock
+                    2 => term.xsetmode(set, WinMode::KbdLock),
+
+                    // IRM - Insertion-replacement
+                    4 => {
+                        self.mode.set(TermMode::Insert, set);
+                    }
+
+                    // SRM - Send/receive
+                    12 => {
+                        self.mode.set(TermMode::Echo, set);
+                    }
+
+                    // LNM - Linefeed/new line
+                    20 => {
+                        self.mode.set(TermMode::Crlf, set);
+                    }
+
+                    _ => {
+                        eprintln!("erresc: unknown set/reset mode {}\n", arg);
+                    }
+                }
+            } else {
+                match arg {
+                    // DECCKM -- Cursor key
+                    1 => {
+                        term.xsetmode(set, WinMode::AppCursor);
+                    }
+
+                    // DECSCNM -- Reverse video
+                    5 => {
+                        term.xsetmode(set, WinMode::Reverse);
+                    }
+
+                    // DECOM -- Origin
+                    6 => {
+                        self.c.state.set(CursorState::Origin, set);
+                        self.tmoveto(0, 0);
+                    }
+
+                    // DECAWM -- Auto wrap
+                    7 => {
+                        self.mode.set(TermMode::Wrap, set);
+                    }
+
+
+                    0  | // Error (IGNORED)
+                    2  | // DECANM -- ANSI/VT52 (IGNORED)
+                    3  | // DECCOLM -- Column  (IGNORED)
+                    4  | // DECSCLM -- Scroll (IGNORED)
+                    8  | // DECARM -- Auto repeat (IGNORED)
+                    18 | // DECPFF -- Printer feed (IGNORED)
+                    19 | // DECPEX -- Printer extent (IGNORED)
+                    42 | // DECNRCM -- National characters (IGNORED)
+                    12   // att610 -- Start blinking cursor (IGNORED)
+                       => {}
+
+                    // DECTCEM -- Text Cursor Enable Mode
+                    25 => {
+                        term.xsetmode(set, WinMode::Hide);
+                    }
+
+                    // x10 mouse compatibility mode (IGNORED due to using wayland)
+                    9 => {}
+
+                    // 1000: report button press
+                    1000 => {
+                        // TODO: `xsetpointermotion(0);`
+                        // seems like x11 specific code, so we can ignore it for now
+                        // on all mouse related events.
+
+                        term.xsetmode(false, WinMode::MODE_MOUSE);
+                        term.xsetmode(set, WinMode::MouseButton);
+                    }
+
+                    // 1002: report motion on button press
+                    1002 => {
+                        term.xsetmode(false, WinMode::MODE_MOUSE);
+                        term.xsetmode(set, WinMode::MouseMotion);
+                    }
+
+                    // 1003: enable all mouse motions
+                    1003 => {
+                        term.xsetmode(false, WinMode::MODE_MOUSE);
+                        term.xsetmode(set, WinMode::MouseMany);
+                    }
+
+                    // 1004: send focus events to tty
+                    1004 => {
+                        term.xsetmode(set, WinMode::Focus);
+                    }
+
+                    // 1006: extended reporting mode
+                    1006 => {
+                        term.xsetmode(set, WinMode::MouseSGR);
+                    }
+
+                    1034 => {
+                        term.xsetmode(set, WinMode::EightBit);
+                    }
+
+
+
+                    47   | // old code for swap screen
+                    1047 | // xterm's alternate screen
+                    1049   // xterm's alternate screen with cursor restoration
+                    => {
+
+                        println!("ALTSCREEEEEEN tsetmode: set/reset private mode {} to {}", arg, set);
+
+                        let cursor_mode = match set {
+                            true => CursorMovement::CursorSave,
+                            false => CursorMovement::CursorLoad,
+                        };
+
+                        if *arg == 1049 {
+                            self.tcursor(cursor_mode);
+                        }
+
+                        let alt = self.mode.contains(TermMode::Altscreen);
+
+                        if alt {
+                            self.tclearregion(0, 0, self.col - 1, self.row - 1);
+                        }
+
+                        if set ^ alt {
+                            self.tswapscreen();
+                        }
+
+
+                        if *arg == 1049 {
+                            self.tcursor(cursor_mode);
+                        }
+                    }
+
+                    1048  // only save/restore cursor
+                    => {
+                        let cursor_mode = match set {
+                            true => CursorMovement::CursorSave,
+                            false => CursorMovement::CursorLoad,
+                        };
+
+                        self.tcursor(cursor_mode);
+                    }
+
+                    // bracketed paste mode
+                    2004 => {
+                        term.xsetmode(set, WinMode::BracketedPaste);
+                    }
+
+                    /* DECSET / DECRESET
+                     * An alternate and generally preferred pair of codes to begin and
+                     * end synchronized updates.
+                     *
+                     * Equivalent to BSU and ESU
+                     */
+                    2026 => {
+                        if set {
+                            self.tsync_begin();
+                        } else {
+                            self.tsync_end();
+                        }
+                    }
+
+
+                    // Not implemented mouse modes. See explanations here
+                    1001 | // Mouse highlihgt mode; can hang the terminal by design
+                    1005 | // UTF-8 mouse mode; will confuse applications not supporting UTF-8 and luit
+                    1015   // urxvt's mangled mouse mode; incompatible and can be mistaken for other control codes/
+                    => {}
+
+                    // DECSDM -- Sixel Display Mode
+                    80 => {
+                        self.mode.set(TermMode::SixelSDM, set);
+                    }
+
+                    // sixel scrolling leaves cursor to right of graphic
+                    8452 => {
+                        self.mode.set(TermMode::SixelCurRT, set);
+                    }
+
+                    _ => {
+                        eprintln!("erresc: unknown set/reset private mode {}\n", arg);
+                    }
+                }
+            }
+        }
+    }
 
     pub fn tsetattr(&mut self, attr: &[i32], l: usize) {
         let mut i = 0;

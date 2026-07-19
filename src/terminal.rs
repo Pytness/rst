@@ -787,15 +787,15 @@ impl Term {
                 self.state.treset();
                 self.resettitle();
                 self.xloadcols();
-                self.xsetmode(0, WinMode::Hide);
+                self.xsetmode(false, WinMode::Hide);
             }
             // DECKPAM – application keypad
             '=' => {
-                self.xsetmode(1, WinMode::AppKeypad);
+                self.xsetmode(true, WinMode::AppKeypad);
             }
             // DECPNM -- Normal keypad
             '>' => {
-                self.xsetmode(0, WinMode::AppKeypad);
+                self.xsetmode(false, WinMode::AppKeypad);
             }
             // DECSC -- Save Cursor
             '7' => {
@@ -983,14 +983,10 @@ impl Term {
     }
 
     // TODO:
-    fn xsetmode(&mut self, set: i32, flags: WinMode) {
+    pub fn xsetmode(&mut self, set: bool, flags: WinMode) {
         let mode = self.win.mode;
 
-        if set != 0 {
-            self.win.mode.insert(flags);
-        } else {
-            self.win.mode.remove(flags);
-        }
+        self.win.mode.set(flags, set);
 
         if (self.win.mode & WinMode::Reverse) != (mode & WinMode::Reverse) {
             self.redraw();

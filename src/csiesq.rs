@@ -106,7 +106,7 @@ impl CSIEscape {
         let maxcol = state.col;
 
         let unknown = || {
-            eprint!("erresc: uknown csi ");
+            eprint!("erresc: unkown csi ");
             self.dump();
         };
 
@@ -327,7 +327,7 @@ impl CSIEscape {
 
             // RM -- Reset Mode
             b'l' => {
-                state.tsetmode(self.private, 0, &self.arg, self.narg);
+                state.tsetmode(self.private, false, &self.arg, self.narg);
             },
 
             // DL -- Delete Mn> lines
@@ -362,7 +362,7 @@ impl CSIEscape {
 
             // SM -- Set terminal mode
             b'h' => {
-                state.tsetmode(self.private, 1, &self.arg, self.narg);
+                state.tsetmode(self.private, true, &self.arg, self.narg);
             }
 
             // SGR - Terminal attribute (color)

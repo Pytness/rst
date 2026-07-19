@@ -30,7 +30,9 @@ fn main() {
     let cols = 80;
     let rows = 24;
 
-    let term = Term::new(cols, rows);
+    let mut term = Term::new(cols, rows);
+    // FIX: why oh why
+    term.state._term_ptr = &mut term as *mut Term;
 
     // xinit
 
