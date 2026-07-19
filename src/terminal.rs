@@ -375,45 +375,55 @@ impl Term {
          * character.
          */
         if self.esc.contains(EscapeState::ESC_STR) {
-            let is_control = match u as u8 {
-                0o7 | 0o30 | 0o32 | 0o33 => true,
-                _ => is_control_c1(u),
-            };
+            'pre_check_control_code: {
+                let is_control = match u as u8 {
+                    0o7 | 0o30 | 0o32 | 0o33 => true,
+                    _ => is_control_c1(u),
+                };
 
-            if is_control {
-                self.esc &= !(EscapeState::ESC_START | EscapeState::ESC_STR | EscapeState::ESC_DCS);
-                self.esc |= EscapeState::ESC_STR_END;
-            } else if !self.esc.contains(EscapeState::ESC_DCS)
-                && self.strescseq.len + len > self.strescseq.size
-            {
-                /*
-                 * Here is a bug in terminals. If the user never sends
-                 * some code to stop the str or esc command, then st
-                 * will stop responding. But this is better than
-                 * silently failing with unknown characters. At least
-                 * then users will report back.
-                 *
-                 * In the case users ever get fixed, here is the code:
-                 */
-                /*
-                 * term.esc = 0;
-                 * strhandle();
-                 */
-                if self.strescseq.size > (usize::MAX - UTF_SIZ) / 2 {
-                    return;
+                if is_control {
+                    self.esc.remove(
+                        EscapeState::ESC_START | EscapeState::ESC_STR | EscapeState::ESC_DCS,
+                    );
+                    self.esc.insert(EscapeState::ESC_STR_END);
+
+                    break 'pre_check_control_code;
                 }
 
-                self.strescseq.size *= 2;
-                self.strescseq.buf.resize(self.strescseq.size, 0);
+                if self.esc.contains(EscapeState::ESC_DCS) {
+                    break 'pre_check_control_code;
+                }
+
+                if self.strescseq.len + len >= self.strescseq.size {
+                    /*
+                     * Here is a bug in terminals. If the user never sends
+                     * some code to stop the str or esc command, then st
+                     * will stop responding. But this is better than
+                     * silently failing with unknown characters. At least
+                     * then users will report back.
+                     *
+                     * In the case users ever get fixed, here is the code:
+                     */
+                    /*
+                     * term.esc = 0;
+                     * strhandle();
+                     */
+                    if self.strescseq.size > (usize::MAX - UTF_SIZ) / 2 {
+                        return;
+                    }
+
+                    self.strescseq.size *= 2;
+                    println!(
+                        "esc: ESC_STR: strescseq.buf.reserve({})",
+                        self.strescseq.size
+                    );
+                    self.strescseq.buf.reserve(self.strescseq.size);
+                }
+
+                self.strescseq.buf.extend_from_slice(&utfbuf[..len]);
+                self.strescseq.len += len;
+                return;
             }
-
-            // memmove(&strescseq.buf[strescseq.len], c, len);
-            // strescseq.len += len;
-            // return;
-
-            self.strescseq.buf.extend_from_slice(&utfbuf[..len]);
-            self.strescseq.len += len;
-            return;
         }
 
         // check_control_code:
@@ -716,15 +726,15 @@ impl Term {
     fn eschandle(&mut self, u: char) -> bool {
         match u {
             '[' => {
-                self.esc |= EscapeState::ESC_CSI;
+                self.esc.insert(EscapeState::ESC_CSI);
                 return false;
             }
             '#' => {
-                self.esc |= EscapeState::ESC_TEST;
+                self.esc.insert( EscapeState::ESC_TEST);
                 return false;
             }
             '%' => {
-                self.esc |= EscapeState::ESC_UTF8;
+                self.esc.insert(EscapeState::ESC_UTF8);
                 return false;
             }
             'P' | // DCS -- Device Control String
@@ -808,7 +818,6 @@ impl Term {
             // ST -- String terminator
             '\\' => {
                 if self.esc.contains(EscapeState::ESC_STR_END) {
-                    // TODO: STR_TERM_ST = 0o33
                     self.strescseq.term = STR_TERM_ST.as_ptr();
                     self.strhandle();
                 }
@@ -975,7 +984,7 @@ impl Term {
     }
 
     fn strreset(&mut self) {
-        self.strescseq = Default::default();
+        self.strescseq.reset();
     }
 
     fn resettitle(&self) {

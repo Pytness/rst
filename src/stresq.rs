@@ -49,7 +49,7 @@ impl Default for StrEscape {
     fn default() -> Self {
         Self {
             type_: 0,
-            buf: Vec::with_capacity(STR_BUF_SIZ),
+            buf: vec![0; STR_BUF_SIZ],
             size: 0,
             len: 0,
             args: [null(); STR_ARG_SIZ],
@@ -66,9 +66,11 @@ impl StrEscape {
 
     pub fn reset(&mut self) {
         self.type_ = 0;
-        self.buf.clear();
+        self.buf.truncate(STR_BUF_SIZ);
+        self.size = STR_BUF_SIZ;
         self.len = 0;
-        self.size = 0;
+        self.args = [null(); STR_ARG_SIZ];
+        self.narg = 0;
         self.term = null();
     }
 
@@ -82,7 +84,6 @@ impl StrEscape {
         term_ptr: *mut Term,
     ) {
         esc.remove(EscapeState::ESC_STR_END | EscapeState::ESC_STR);
-
         self.parse();
 
         let narg = self.narg;
@@ -209,11 +210,20 @@ impl StrEscape {
                             (*term_ptr).state.tfulldirt();
                         }
                     }
+
+                    return;
+                }
+
+                x => {
+                    eprintln!("erresc: unknown osc par {}", x);
                 }
                 _ => {}
             },
             _ => {}
         }
+
+        eprintln!("erresc: unknown str ");
+        self.strdump();
     }
 
     pub fn parse(&mut self) {
@@ -243,12 +253,14 @@ impl StrEscape {
                 self.args[self.narg] = p;
                 self.narg += 1;
 
-                while *p != b';' && *p != 0 {
+                let mut c = *p;
+                while *p != b';' && c != 0 {
+                    c = *p;
                     p = p.add(1);
                 }
 
-                if *p == 0 {
-                    break;
+                if c == 0 {
+                    return;
                 }
 
                 *(p) = 0;
