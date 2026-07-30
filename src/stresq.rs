@@ -49,7 +49,7 @@ impl Default for StrEscape {
     fn default() -> Self {
         Self {
             type_: 0,
-            buf: vec![0; STR_BUF_SIZ],
+            buf: Vec::with_capacity(STR_BUF_SIZ),
             size: 0,
             len: 0,
             args: [null(); STR_ARG_SIZ],
@@ -66,7 +66,7 @@ impl StrEscape {
 
     pub fn reset(&mut self) {
         self.type_ = 0;
-        self.buf.truncate(STR_BUF_SIZ);
+        self.buf.clear();
         self.size = STR_BUF_SIZ;
         self.len = 0;
         self.args = [null(); STR_ARG_SIZ];
@@ -228,10 +228,13 @@ impl StrEscape {
 
     pub fn parse(&mut self) {
         let mut c = 0;
-        let mut p = self.buf.as_mut_ptr();
 
         self.narg = 0;
-        self.buf[self.len] = 0;
+        // buf holds exactly `len` bytes (no reserved slot for a
+        // terminator), so grow it by one before writing the sentinel
+        // instead of indexing one past the end.
+        self.buf.resize(self.len + 1, 0);
+        let mut p = self.buf.as_mut_ptr();
 
         unsafe {
             if *p == 0 {
