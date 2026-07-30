@@ -211,6 +211,7 @@ impl<'a> App<'a> {
         self.cresize(size.width, size.height);
 
         self.term
+            .state
             .ttyresize(size.width as usize, size.height as usize);
 
         unsafe {
@@ -285,7 +286,8 @@ impl<'a> App<'a> {
         term.win.tw = col * term.win.cw;
         term.win.th = row * term.win.ch;
 
-        term.ttyresize(term.win.tw as usize, term.win.th as usize);
+        term.state
+            .ttyresize(term.win.tw as usize, term.win.th as usize);
     }
 
     pub fn visibility(&mut self) {}

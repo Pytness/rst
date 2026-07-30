@@ -179,27 +179,6 @@ impl Term {
         }
     }
 
-    pub fn ttyresize(&mut self, tw: usize, th: usize) {
-        self.state.pixw = tw;
-        self.state.pixh = th;
-
-        let w = libc::winsize {
-            ws_row: self.state.row as u16,
-            ws_col: self.state.col as u16,
-            ws_xpixel: tw as u16,
-            ws_ypixel: th as u16,
-        };
-
-        unsafe {
-            if libc::ioctl(CMDFD, libc::TIOCSWINSZ, &w) < 0 {
-                panic!(
-                    "Couldn't set window size: {}",
-                    std::io::Error::last_os_error()
-                );
-            }
-        }
-    }
-
     pub fn ttywrite(&mut self, buffer: &[u8], len: usize, may_echo: bool) {
         if may_echo && self.state.mode.contains(TermMode::Echo) {
             self.twrite(&buffer, len, true);
@@ -504,7 +483,7 @@ impl Term {
 
         match u {
             // HT
-            b'\t' => self.tputtab(1),
+            b'\t' => self.state.tputtab(1),
 
             // BS (\b)
             0x08 => {
@@ -658,28 +637,6 @@ impl Term {
             self.esc
                 .remove(EscapeState::ESC_STR_END | EscapeState::ESC_STR);
         }
-    }
-
-    pub fn tputtab(&mut self, count: isize) {
-        let mut x = self.state.c.x;
-
-        if count > 0 {
-            while x < self.state.col && count > 0 {
-                x += 1;
-                while x < self.state.col && self.state.tabs[x] == 0 {
-                    x += 1;
-                }
-            }
-        } else if count < 0 {
-            while x > 0 && count < 0 {
-                x -= 1;
-                while x > 0 && self.state.tabs[x] == 0 {
-                    x -= 1;
-                }
-            }
-        }
-
-        self.state.c.x = x.min(self.state.col - 1)
     }
 
     fn tdefutf8(&mut self, u: char) {
