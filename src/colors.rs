@@ -108,9 +108,9 @@ impl ColorRegistry {
         let mut name = name;
         let mut color = Color::default();
 
-        if let Some(name) = name {
-            todo!("Implement color name parsing for '{}'", name);
-        }
+        // if let Some(name) = name {
+        //     todo!("Implement color name parsing for '{}'", name);
+        // }
 
         const XTERM_SIZE: usize = 6 * 6 * 6 + 16;
 
