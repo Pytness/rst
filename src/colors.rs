@@ -146,12 +146,12 @@ impl ColorRegistry {
         self.colors.get(i)
     }
 
-    pub fn set_color_name(&mut self, i: usize, name: &str) -> bool {
+    pub fn set_color_name(&mut self, i: usize, name: Option<&str>) -> bool {
         if i >= self.colors.len() {
             return false;
         }
 
-        if let Some(color) = self.load_color(i, Some(name)) {
+        if let Some(color) = self.load_color(i, name) {
             self.colors[i] = color;
 
             if i == DEFAULTBG as usize {

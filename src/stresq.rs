@@ -161,7 +161,9 @@ impl StrEscape {
                             false,
                             term_ptr,
                         );
-                    } else if colors.set_color_name(OSC_TABLE[j as usize].idx as usize, p_str) {
+                    } else if !colors
+                        .set_color_name(OSC_TABLE[j as usize].idx as usize, Some(p_str))
+                    {
                         eprintln!(
                             "erresc: invalid {} color: {}",
                             OSC_TABLE[j as usize].str, p_str
@@ -195,18 +197,23 @@ impl StrEscape {
                         -1
                     };
 
-                    let p_str =
-                        unsafe { CStr::from_ptr(p as *const i8).to_str().unwrap_or_default() };
+                    let p_str = if !p.is_null() {
+                        let v =
+                            unsafe { CStr::from_ptr(p as *const i8).to_str().unwrap_or_default() };
+                        Some(v)
+                    } else {
+                        None
+                    };
 
-                    if !p.is_null() && p_str != "?" {
+                    if !p.is_null() && p_str != Some("?") {
                         self.osc_color_response(colors, j, 0, true, term_ptr);
-                    } else if j >= 0 && colors.set_color_name(j as usize, p_str) {
+                    } else if j >= 0 && !colors.set_color_name(j as usize, p_str) {
                         if par == 104 && self.narg <= 1 {
                             colors.load_colors();
                             return;
                         }
 
-                        eprintln!("erresc: invalid color j={}, p={}", j, p_str,);
+                        eprintln!("erresc: invalid color j={}, p={:?}", j, p_str);
                     } else {
                         // TODO: if defaulbg color is changed, borders are dirty
                         unsafe {
