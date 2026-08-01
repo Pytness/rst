@@ -343,7 +343,7 @@ impl TermState {
         self.tclearregion(0, self.bot - n + 1, self.col - 1, self.bot);
 
         // TODO: Check if this range is correct
-        for i in (self.bot..orig + n).rev() {
+        for i in (orig + n..=self.bot).rev() {
             self.line.swap(i, i - n);
         }
 
