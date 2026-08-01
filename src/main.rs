@@ -30,9 +30,7 @@ fn main() {
     let cols = 80;
     let rows = 24;
 
-    let mut term = Term::new(cols, rows);
-    // FIX: why oh why
-    term.state._term_ptr = &mut term as *mut Term;
+    let term = Term::new(cols, rows);
 
     // xinit
 
@@ -46,10 +44,30 @@ fn main() {
 
     let mut app = App::new(term, template, display_builder);
 
+    // `term` moves (twice: into App::new, then into the App struct's `term`
+    // field) before this point, so its final, stable address is only known
+    // once it's a field of `app`, which itself never moves again (only
+    // borrowed) for the rest of `main`. Setting this pointer any earlier
+    // (e.g. on the pre-move `term` local) leaves it dangling at a stack slot
+    // that gets reused by later locals, corrupting memory the first time
+    // something dereferences it (e.g. the OSC 10/11/12 color-query handling
+    // in stresq.rs, which nvim exercises on startup) — this was a real,
+    // intermittent crash.
+    app.term.state._term_ptr = &mut app.term as *mut Term;
+
     match event_loop.run_app(&mut app) {
         Ok(_) => (),
         Err(e) => eprintln!("Application error: {e}"),
     };
+
+    // Drop GL/EGL resources here, on the main thread, before possibly
+    // calling process::exit below (which skips destructors) or returning.
+    drop(app);
+
+    let child_exit_code = terminal::CHILD_EXIT_CODE.load(std::sync::atomic::Ordering::SeqCst);
+    if child_exit_code > 0 {
+        std::process::exit(child_exit_code);
+    }
 }
 
 fn xinit(_cols: usize, _rows: usize) {}

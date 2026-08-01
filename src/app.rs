@@ -59,7 +59,7 @@ pub struct App<'a> {
     // (but not our own RedrawRequested), consumed at the top of `new_events`.
     xev_pending: bool,
 
-    term: Term,
+    pub(crate) term: Term,
     ttyfd: i32,
     rfd: libc::fd_set,
     last_blink: Instant,
@@ -329,14 +329,21 @@ impl<'a> App<'a> {
             .mode
             .contains(GlyphAttribute::ATTR_WDUMMY)
         {
-            self.term.state.ocx -= 1;
+            // A dummy cell should never legitimately land in column 0 (it's
+            // always the second half of a wide char placed at column >= 1),
+            // but `ocx` comes from a previous frame's cursor position and
+            // isn't guaranteed to satisfy that after edits that shift row
+            // content (insert/delete-char, resize). A bare `-= 1` here
+            // underflows `usize` and the wrapped value then blows up as an
+            // out-of-bounds index a few lines down - saturate instead.
+            self.term.state.ocx = self.term.state.ocx.saturating_sub(1);
         }
 
         if self.term.state.line[self.term.state.c.y][cx]
             .mode
             .contains(GlyphAttribute::ATTR_WDUMMY)
         {
-            cx -= 1;
+            cx = cx.saturating_sub(1);
         }
 
         self.drawregion(0, 0, self.term.state.col, self.term.state.row);
@@ -608,6 +615,15 @@ impl<'a> ApplicationHandler for App<'a> {
     }
 
     fn new_events(&mut self, event_loop: &ActiveEventLoop, _cause: winit::event::StartCause) {
+        if crate::terminal::CHILD_EXIT_CODE.load(std::sync::atomic::Ordering::SeqCst) != -1 {
+            // The SIGCHLD watcher thread noticed the shell died; ask winit to
+            // stop the loop on the main thread instead of calling
+            // process::exit from that background thread (see CHILD_EXIT_CODE
+            // doc comment for why: it segfaults in the GPU driver otherwise).
+            event_loop.exit();
+            return;
+        }
+
         if ttyread_pending() {
             self.loop_timeout = 0.0;
         }

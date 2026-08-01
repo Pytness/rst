@@ -32,7 +32,7 @@ bitflags! {
 }
 
 #[rustfmt::skip]
-#[derive(Default)]
+#[derive(Default, Debug)]
 enum CursorStyle {
 
     BlinkingBlock =        0, // blinking block
@@ -45,7 +45,7 @@ enum CursorStyle {
     SteadyBar            = 6, // steady bar ("|")
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TermWindow {
     pub tw: u32,             // tty width
     pub th: u32,             // tty height

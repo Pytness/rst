@@ -59,7 +59,7 @@ pub const DEFAULTBG: u32 = 259;
 pub const DEFAULTCS: u32 = 256;
 pub const DEFAULTRCS: u32 = 257;
 
-pub const SHELL: Option<&CStr> = Some(c"/bin/bash");
+pub const SHELL: Option<&CStr> = Some(c"/bin/zsh");
 pub const TERM: &CStr = c"xterm-256color";
 pub const BORDERPX: u32 = 4;
 

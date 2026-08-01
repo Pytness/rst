@@ -197,7 +197,7 @@ pub struct Image {
 
 // ── TermState ─────────────────────────────────────────────────────────────────
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TermState {
     pub _term_ptr: *mut Term,   // pointer to the terminal state
     pub row: usize,             // number of rows

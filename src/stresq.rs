@@ -171,6 +171,8 @@ impl StrEscape {
                             (*term_ptr).state.tfulldirt();
                         }
                     }
+
+                    return;
                 }
 
                 // color set

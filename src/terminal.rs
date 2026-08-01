@@ -156,7 +156,7 @@ impl Term {
                     libc::setsid();
                     libc::dup2(s, 0);
                     libc::dup2(s, 1);
-                    libc::dup2(s, 2);
+                    // libc::dup2(s, 2);
 
                     if libc::ioctl(s, libc::TIOCSCTTY, 0) < 0 {
                         panic!(
@@ -881,7 +881,13 @@ impl Term {
 
             match ret {
                 0 => {
-                    libc::exit(0);
+                    // EOF: the child hung up. Same reasoning as
+                    // CHILD_EXIT_CODE's doc comment - don't call
+                    // exit()/_exit() here on the main thread mid-frame; let
+                    // the event loop unwind normally so App's GL/EGL Drop
+                    // runs before the process actually exits.
+                    CHILD_EXIT_CODE.store(0, std::sync::atomic::Ordering::SeqCst);
+                    return 0;
                 }
 
                 -1 => {
@@ -984,6 +990,20 @@ impl Term {
     }
 }
 
+/// Set by the SIGCHLD-watcher thread once the tracked child has exited, to
+/// the process exit code the main thread should shut down with. `-1` means
+/// "child still running".
+///
+/// The watcher thread must NOT call `std::process::exit`/`_exit` itself:
+/// that races the main thread's normal GL/EGL teardown (dropping `App` at
+/// the end of `main`) and the two concurrent driver teardowns can segfault
+/// inside the NVIDIA driver (observed via coredump: one thread inside
+/// `process::exit`'s atexit handlers, the other inside `drop_in_place::<App>`,
+/// both deep in `libnvidia-eglcore.so` at the same time). Only the main
+/// thread may tear down the GL context, so it alone is allowed to exit the
+/// process; this flag is how the watcher thread asks it to.
+pub static CHILD_EXIT_CODE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
 /// Reaps the child shell in the background and mirrors st's `sigchld()`:
 /// terminate with the child's exit status (or the signal that killed it)
 /// once the tracked `pid` shows up in a `waitpid`, so a dead shell doesn't
@@ -1005,13 +1025,15 @@ fn install_sigchld_handler() {
                     if p == PID {
                         if libc::WIFEXITED(stat) && libc::WEXITSTATUS(stat) != 0 {
                             eprintln!("child exited with status {}", libc::WEXITSTATUS(stat));
-                            std::process::exit(1);
+                            CHILD_EXIT_CODE.store(1, std::sync::atomic::Ordering::SeqCst);
                         } else if libc::WIFSIGNALED(stat) {
                             eprintln!("child terminated due to signal {}", libc::WTERMSIG(stat));
-                            std::process::exit(1);
+                            CHILD_EXIT_CODE.store(1, std::sync::atomic::Ordering::SeqCst);
+                        } else {
+                            CHILD_EXIT_CODE.store(0, std::sync::atomic::Ordering::SeqCst);
                         }
 
-                        libc::_exit(0);
+                        return;
                     }
                 }
             }
@@ -1054,6 +1076,8 @@ fn execsh(cmd: Option<&CStr>, args: Option<&[&CStr]>) {
         } else {
             vec![sh, std::ptr::null(), std::ptr::null()]
         };
+
+        eprintln!("Executing shell: {:?}", args);
 
         libc::signal(libc::SIGCHLD, libc::SIG_DFL);
         libc::signal(libc::SIGHUP, libc::SIG_DFL);
