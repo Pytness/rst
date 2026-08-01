@@ -526,3 +526,119 @@ impl CSIEscape {
         *self = Self::default();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn seq(payload: &[u8]) -> CSIEscape {
+        let mut c = CSIEscape::default();
+        c.buf[..payload.len()].copy_from_slice(payload);
+        c.len = payload.len();
+        c
+    }
+
+    #[test]
+    fn parse_zero_length_buffer_is_safe() {
+        let mut c = seq(b"");
+        c.parse();
+        assert_eq!(c.narg, 0);
+        assert_eq!(c.mode, [0, 0]);
+        assert!(!c.private);
+    }
+
+    #[test]
+    fn parse_final_byte_only_defaults_arg_to_zero() {
+        // e.g. bare "\x1b[A" (CUU with no explicit count): parse() itself
+        // leaves the arg at 0; the DEFAULT! macro applies the real default
+        // of 1 later, in handle().
+        let mut c = seq(b"A");
+        c.parse();
+        assert_eq!(c.narg, 1);
+        assert_eq!(c.arg[0], 0);
+        assert_eq!(c.mode, [b'A', 0]);
+    }
+
+    #[test]
+    fn parse_single_numeric_arg() {
+        let mut c = seq(b"5A");
+        c.parse();
+        assert_eq!(c.narg, 1);
+        assert_eq!(c.arg[0], 5);
+        assert_eq!(c.mode, [b'A', 0]);
+    }
+
+    #[test]
+    fn parse_multiple_args_split_on_semicolon() {
+        let mut c = seq(b"1;2H");
+        c.parse();
+        assert_eq!(c.narg, 2);
+        assert_eq!(&c.arg[..2], &[1, 2]);
+        assert_eq!(c.mode, [b'H', 0]);
+    }
+
+    #[test]
+    fn parse_missing_middle_arg_defaults_to_zero() {
+        let mut c = seq(b"1;H");
+        c.parse();
+        assert_eq!(c.narg, 2);
+        assert_eq!(&c.arg[..2], &[1, 0]);
+        assert_eq!(c.mode, [b'H', 0]);
+    }
+
+    #[test]
+    fn parse_private_marker_sets_flag_and_is_not_counted_as_an_arg_digit() {
+        let mut c = seq(b"?1049h");
+        c.parse();
+        assert!(c.private);
+        assert_eq!(c.narg, 1);
+        assert_eq!(c.arg[0], 1049);
+        assert_eq!(c.mode, [b'h', 0]);
+    }
+
+    #[test]
+    fn parse_switches_to_colon_separator_for_sgr_subparams() {
+        // e.g. truecolor SGR "\x1b[38:2:255:0:0m"
+        let mut c = seq(b"38:2:255:0:0m");
+        c.parse();
+        assert_eq!(c.narg, 5);
+        assert_eq!(&c.arg[..5], &[38, 2, 255, 0, 0]);
+        assert_eq!(c.mode, [b'm', 0]);
+    }
+
+    #[test]
+    fn parse_two_byte_intermediate_and_final() {
+        // e.g. DECSCUSR "\x1b[0 q"
+        let mut c = seq(b"0 q");
+        c.parse();
+        assert_eq!(c.narg, 1);
+        assert_eq!(c.arg[0], 0);
+        assert_eq!(c.mode, [b' ', b'q']);
+    }
+
+    #[test]
+    fn parse_caps_args_at_esc_arg_siz() {
+        let payload = (0..20).map(|i| i.to_string()).collect::<Vec<_>>().join(";") + "m";
+        let mut c = seq(payload.as_bytes());
+        c.parse();
+        assert_eq!(c.narg, ESC_ARG_SIZ);
+        let expected: Vec<i32> = (0..ESC_ARG_SIZ as i32).collect();
+        assert_eq!(&c.arg[..ESC_ARG_SIZ], expected.as_slice());
+    }
+
+    #[test]
+    fn reset_clears_all_state() {
+        let mut c = seq(b"?1;2m");
+        c.parse();
+        assert!(c.narg > 0);
+        assert!(c.private);
+
+        c.reset();
+        assert_eq!(c.len, 0);
+        assert_eq!(c.narg, 0);
+        assert!(!c.private);
+        assert_eq!(c.arg, [0; ESC_ARG_SIZ]);
+        assert_eq!(c.mode, [0, 0]);
+        assert!(c.buf.iter().all(|&b| b == 0));
+    }
+}
