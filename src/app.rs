@@ -111,7 +111,7 @@ impl<'a> App<'a> {
     /// SAFETY: This function should only be called after the OpenGL context has been created and made current in the `resumed` method.
     /// Calling this function before that will result in undefined behavior.
     pub unsafe fn gl(&self) -> &glow::Context {
-        self.gl.as_ref().unwrap()
+        self.gl.as_ref().expect("OpenGL context is not initialized")
     }
 
     pub fn kpress(&mut self, event: KeyEvent) {
@@ -158,7 +158,9 @@ impl<'a> App<'a> {
 
         // custom keys from config
         if let Some(customkey) = kmap(code, self.keyboard_modifiers) {
-            let customkey_str = customkey.to_str().unwrap();
+            let customkey_str = customkey
+                .to_str()
+                .expect("Failed to convert custom key to string");
             self.term
                 .ttywrite(customkey_str.as_bytes(), customkey_str.len(), true);
             return;
@@ -216,22 +218,28 @@ impl<'a> App<'a> {
 
         unsafe {
             self.quad_renderer = Some(renderers::QuadRenderer::new(
-                self.gl.as_ref().unwrap().clone(),
+                self.gl
+                    .as_ref()
+                    .expect("GL context is not initialized")
+                    .clone(),
                 size.width as i32,
                 size.height as i32,
             ));
 
-            self.quad_renderer.as_ref().unwrap().clear_section(
-                0,
-                0,
-                size.width as i32,
-                size.height as i32,
-                (0.0, 0.0, 0.0, 0.4),
-            );
+            self.quad_renderer
+                .as_ref()
+                .expect("QuadRenderer is not initialized")
+                .clear_section(
+                    0,
+                    0,
+                    size.width as i32,
+                    size.height as i32,
+                    (0.0, 0.0, 0.0, 0.4),
+                );
 
             self.text_renderer
                 .as_mut()
-                .unwrap()
+                .expect("TextRenderer is not initialized")
                 .set_viewport(&self.term.win);
 
             self.gl()
@@ -245,11 +253,15 @@ impl<'a> App<'a> {
             window: _window,
         }) = self.app_state.as_ref()
         {
-            let gl_context = self.gl_handler.gl_context.as_ref().unwrap();
+            let gl_context = self
+                .gl_handler
+                .gl_context
+                .as_ref()
+                .expect("GL context is not initialized");
             gl_surface.resize(
                 gl_context,
-                NonZeroU32::new(size.width).unwrap(),
-                NonZeroU32::new(size.height).unwrap(),
+                NonZeroU32::new(size.width).expect("Width must be non-zero"),
+                NonZeroU32::new(size.height).expect("Height must be non-zero"),
             );
         } else {
             eprintln!("Resize event received before GL surface was created, ignoring.");
@@ -421,14 +433,17 @@ impl<'a> App<'a> {
         let glyphs: Vec<TermGlyph> = self.xdrawglyphfontspecs(&glyphs);
 
         unsafe {
-            self.quad_renderer.as_ref().unwrap().with(|| {
-                let proj = ortho(self.term.state.pixw as f32, self.term.state.pixh as f32);
+            self.quad_renderer
+                .as_ref()
+                .expect("QuadRenderer is not initialized")
+                .with(|| {
+                    let proj = ortho(self.term.state.pixw as f32, self.term.state.pixh as f32);
 
-                self.text_renderer
-                    .as_mut()
-                    .unwrap()
-                    .draw_glyphs(&glyphs, y1 as i32, x1 as i32, &proj);
-            });
+                    self.text_renderer
+                        .as_mut()
+                        .expect("TextRenderer is not initialized")
+                        .draw_glyphs(&glyphs, y1 as i32, x1 as i32, &proj);
+                });
         }
     }
 
@@ -517,7 +532,7 @@ impl<'a> ApplicationHandler for App<'a> {
             return;
         }
 
-        let (window, gl_config) = gl_window.unwrap();
+        let (window, gl_config) = gl_window.expect("gl_window checked as Some above");
 
         let attrs = window
             .build_surface_attributes(Default::default())
@@ -530,12 +545,19 @@ impl<'a> ApplicationHandler for App<'a> {
                 .expect("Failed to create surface")
         };
 
-        let gl_context = self.gl_handler.gl_context.as_ref().unwrap();
-        gl_context.make_current(&gl_surface).unwrap();
+        let gl_context = self
+            .gl_handler
+            .gl_context
+            .as_ref()
+            .expect("GL context is not initialized");
+        gl_context
+            .make_current(&gl_surface)
+            .expect("Failed to make GL context current");
 
         let gl = unsafe {
             glow::Context::from_loader_function(|s| {
-                let symbol = CString::new(s).unwrap();
+                let symbol =
+                    CString::new(s).expect("GL proc address symbol name contained a NUL byte");
                 gl_config.display().get_proc_address(symbol.as_c_str())
             })
         };
@@ -553,20 +575,30 @@ impl<'a> ApplicationHandler for App<'a> {
             let width = window.inner_size().width as i32;
             let height = window.inner_size().height as i32;
             TextRenderer::<'a>::new(
-                self.gl.as_ref().unwrap().clone(),
+                self.gl
+                    .as_ref()
+                    .expect("GL context is not initialized")
+                    .clone(),
                 font_registry,
                 self.conf_font_size_px,
                 (width, height),
             )
         });
 
-        let font_size = self.text_renderer.as_ref().unwrap().font_size();
+        let font_size = self
+            .text_renderer
+            .as_ref()
+            .expect("TextRenderer is not initialized")
+            .font_size();
         self.term.win.cw = font_size.width as u32;
         self.term.win.ch = font_size.height as u32;
 
         self.quad_renderer.get_or_insert_with(|| unsafe {
             renderers::QuadRenderer::new(
-                self.gl.as_ref().unwrap().clone(),
+                self.gl
+                    .as_ref()
+                    .expect("GL context is not initialized")
+                    .clone(),
                 window.inner_size().width as i32,
                 window.inner_size().height as i32,
             )
@@ -733,12 +765,21 @@ impl<'a> ApplicationHandler for App<'a> {
                     window: _,
                 }) = &self.app_state
                 {
-                    let gl_context = self.gl_handler.gl_context.as_ref().unwrap();
+                    let gl_context = self
+                        .gl_handler
+                        .gl_context
+                        .as_ref()
+                        .expect("GL context is not initialized");
 
                     unsafe {
-                        self.quad_renderer.as_ref().unwrap().render();
+                        self.quad_renderer
+                            .as_ref()
+                            .expect("QuadRenderer is not initialized")
+                            .render();
                     }
-                    gl_surface.swap_buffers(gl_context).unwrap();
+                    gl_surface
+                        .swap_buffers(gl_context)
+                        .expect("Failed to swap GL buffers");
                 }
 
                 // let duration = start.elapsed();

@@ -350,7 +350,11 @@ impl StrEscape {
         let mut buffer = [0u8; 32];
         let mut cursor = Cursor::new(&mut buffer[..]);
 
-        let terminator: &str = unsafe { CStr::from_ptr(self.term as *const i8).to_str().unwrap() };
+        let terminator: &str = unsafe {
+            CStr::from_ptr(self.term as *const i8)
+                .to_str()
+                .expect("valid terminator sequence on osc_color_response")
+        };
 
         let err = write!(
             cursor,
@@ -400,7 +404,11 @@ mod tests {
     }
 
     fn arg_str(s: &StrEscape, i: usize) -> &str {
-        unsafe { CStr::from_ptr(s.args[i] as *const i8).to_str().unwrap() }
+        unsafe {
+            CStr::from_ptr(s.args[i] as *const i8)
+                .to_str()
+                .expect("parsed arg is not valid UTF-8")
+        }
     }
 
     #[test]

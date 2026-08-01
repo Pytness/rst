@@ -36,7 +36,7 @@ fn main() {
 
     // xinit
 
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new().expect("failed to create winit event loop");
 
     let template = ConfigTemplateBuilder::new()
         .with_alpha_size(8)

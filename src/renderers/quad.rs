@@ -16,10 +16,12 @@ impl QuadRenderer {
     pub unsafe fn new(gl: Rc<glow::Context>, width: i32, height: i32) -> Self {
         unsafe {
             let program = include_shader!(gl, "quad");
-            let vao = gl.create_vertex_array().unwrap();
-            let vbo = gl.create_buffer().unwrap();
-            let fbo = gl.create_framebuffer().unwrap();
-            let color_tex = gl.create_texture().unwrap();
+            let vao = gl.create_vertex_array().expect("failed to create quad VAO");
+            let vbo = gl.create_buffer().expect("failed to create quad VBO");
+            let fbo = gl.create_framebuffer().expect("failed to create quad FBO");
+            let color_tex = gl
+                .create_texture()
+                .expect("failed to create quad color texture");
 
             // Fullscreen quad vertex data: (pos.x, pos.y, uv.x, uv.y) x 6
             #[rustfmt::skip]

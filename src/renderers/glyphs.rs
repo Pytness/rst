@@ -179,8 +179,11 @@ impl<'a> TextRenderer<'a> {
         // implicitly permit unsafe calls without an unsafe{} block.
         let program = unsafe { include_shader!(gl, "font") };
 
-        let vao = unsafe { gl.create_vertex_array().unwrap() };
-        let vbo = unsafe { gl.create_buffer().unwrap() };
+        let vao = unsafe {
+            gl.create_vertex_array()
+                .expect("failed to create glyph VAO")
+        };
+        let vbo = unsafe { gl.create_buffer().expect("failed to create glyph VBO") };
 
         let u_proj = unsafe { gl.get_uniform_location(program, "u_proj") };
         let u_tex = unsafe { gl.get_uniform_location(program, "u_font") };

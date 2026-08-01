@@ -33,7 +33,10 @@ fn utf8decode(buf: &[u8]) -> Option<char> {
         let end = utf_len.min(buf.len());
         match std::str::from_utf8(&buf[..end]) {
             Ok(s) => {
-                let u = s.chars().next().unwrap();
+                let u = s
+                    .chars()
+                    .next()
+                    .expect("utf8decode expected at least one character");
                 return Some(u);
             }
             _ => continue,
@@ -977,7 +980,8 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
 
         let mut sh = libc::getenv(c"SHELL".as_ptr());
 
-        let default_shell = CString::new(cmd.unwrap_or("/bin/sh")).unwrap();
+        let default_shell = CString::new(cmd.unwrap_or("/bin/sh"))
+            .expect("default shell command contained a NUL byte");
 
         if sh.is_null() {
             sh = if *((*pw).pw_shell) != 0 {

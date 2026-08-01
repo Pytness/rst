@@ -44,7 +44,10 @@ impl GlHandler {
                     self.template.clone(),
                     gl_config_picker,
                 ) {
-                    Ok((window, gl_config)) => (window.unwrap(), gl_config),
+                    Ok((window, gl_config)) => (
+                        window.expect("display builder did not create a window"),
+                        gl_config,
+                    ),
                     Err(e) => panic!("Failed to build display: {e}"),
                 };
 
@@ -58,7 +61,11 @@ impl GlHandler {
                 Some((window, gl_config))
             }
             GlDisplayCreationState::Init => {
-                let gl_config = self.gl_context.as_ref().unwrap().config();
+                let gl_config = self
+                    .gl_context
+                    .as_ref()
+                    .expect("GL context is not initialized")
+                    .config();
 
                 eprintln!("Reusing config with {} samples", gl_config.num_samples());
 
@@ -93,7 +100,7 @@ pub fn gl_config_picker(configs: Box<dyn Iterator<Item = GlutinConfig> + '_>) ->
                 accum
             }
         })
-        .unwrap()
+        .expect("no GL configs available")
 }
 
 fn create_gl_context(window: &Window, gl_config: &GlutinConfig) -> NotCurrentContext {

@@ -217,7 +217,13 @@ fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
     //     return None;
     // }
 
-    Some((fmatch.filename().unwrap().to_string(), matrix))
+    Some((
+        fmatch
+            .filename()
+            .expect("fontconfig match has no filename")
+            .to_string(),
+        matrix,
+    ))
 }
 
 impl FontRegistry {
@@ -231,7 +237,7 @@ impl FontRegistry {
     pub fn register_font(&mut self, name: &str) {
         let fontconfig = Fontconfig::new().expect("failed to create fontconfig instance");
 
-        let pattern_ptr = CString::new(name).unwrap();
+        let pattern_ptr = CString::new(name).expect("font name contained a NUL byte");
 
         let mut pattern = unsafe {
             Pattern::from_pattern(
