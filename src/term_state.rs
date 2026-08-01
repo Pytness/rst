@@ -372,12 +372,10 @@ impl TermState {
         self.tclearregion(0, orig, self.col - 1, orig + n - 1);
         self.tsetdirt(orig + n, self.bot);
 
-        for i in orig..=(self.bot.saturating_sub(n)) {
-            // let temp = self.line[i].to_owned();
-            // self.line[i] = self.line[i + n];
-            // self.line[i + n] = temp;
-
-            self.line.swap(i, i + n);
+        if let Some(range) = self.bot.checked_sub(n) {
+            for i in orig..=range {
+                self.line.swap(i, i + n);
+            }
         }
 
         /* move images, if they are inside the scrolling region */
