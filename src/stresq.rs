@@ -144,6 +144,7 @@ impl StrEscape {
                     let p = self.args[1];
 
                     let j = par - 10;
+
                     if j < 0 || j >= OSC_TABLE.len() as i32 {
                         return;
                     }
@@ -381,5 +382,157 @@ impl StrEscape {
         } else {
             unsafe { (*term_ptr).ttywrite(&buffer, n, true) };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::terminal::EscapeState;
+    use crate::terminal::Term;
+
+    fn seq(type_: u8, payload: &[u8]) -> StrEscape {
+        let mut s = StrEscape::new();
+        s.type_ = type_;
+        s.buf = payload.to_vec();
+        s.len = payload.len();
+        s
+    }
+
+    fn arg_str(s: &StrEscape, i: usize) -> &str {
+        unsafe { CStr::from_ptr(s.args[i] as *const i8).to_str().unwrap() }
+    }
+
+    #[test]
+    fn parse_empty_payload_has_no_args() {
+        let mut s = seq(b'P', b"");
+        s.parse();
+        assert_eq!(s.narg, 0);
+    }
+
+    #[test]
+    fn parse_single_arg() {
+        let mut s = seq(b'P', b"abc");
+        s.parse();
+        assert_eq!(s.narg, 1);
+        assert_eq!(arg_str(&s, 0), "abc");
+    }
+
+    #[test]
+    fn parse_splits_on_semicolons() {
+        let mut s = seq(b'P', b"1;22;333");
+        s.parse();
+        assert_eq!(s.narg, 3);
+        assert_eq!(arg_str(&s, 0), "1");
+        assert_eq!(arg_str(&s, 1), "22");
+        assert_eq!(arg_str(&s, 2), "333");
+    }
+
+    #[test]
+    fn parse_trailing_semicolon_yields_empty_final_arg() {
+        let mut s = seq(b'P', b"1;");
+        s.parse();
+        assert_eq!(s.narg, 2);
+        assert_eq!(arg_str(&s, 0), "1");
+        assert_eq!(arg_str(&s, 1), "");
+    }
+
+    #[test]
+    fn parse_osc_title_preserves_semicolons_in_remainder() {
+        // OSC sequences with a first arg starting with '0', '1' or '2' (window/icon
+        // title, OSC 7, ...) keep the remainder of the payload intact, including any
+        // embedded ';', instead of splitting it into further args.
+        let mut s = seq(b']', b"0;my;title;here");
+        s.parse();
+        assert_eq!(s.narg, 2);
+        assert_eq!(arg_str(&s, 0), "0");
+        assert_eq!(arg_str(&s, 1), "my;title;here");
+    }
+
+    #[test]
+    fn parse_non_title_osc_splits_normally() {
+        // par >= '3' doesn't hit the title special-case, so ';' still splits args.
+        let mut s = seq(b']', b"4;1;red");
+        s.parse();
+        assert_eq!(s.narg, 3);
+        assert_eq!(arg_str(&s, 0), "4");
+        assert_eq!(arg_str(&s, 1), "1");
+        assert_eq!(arg_str(&s, 2), "red");
+    }
+
+    #[test]
+    fn parse_caps_args_at_str_arg_siz() {
+        let payload = (0..20)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(";")
+            .into_bytes();
+        let mut s = seq(b'P', &payload);
+        s.parse();
+        assert_eq!(s.narg, STR_ARG_SIZ);
+    }
+
+    #[test]
+    fn reset_clears_all_state() {
+        let mut s = seq(b'P', b"1;2;3");
+        s.parse();
+        assert!(s.narg > 0);
+
+        s.reset();
+        assert_eq!(s.type_, 0);
+        assert_eq!(s.len, 0);
+        assert_eq!(s.narg, 0);
+        assert!(s.buf.is_empty());
+        assert!(s.args.iter().all(|p| p.is_null()));
+        assert!(s.term.is_null());
+    }
+
+    #[test]
+    fn handle_clears_escape_state() {
+        let mut s = seq(b'k', b"");
+        let mut esc = EscapeState::ESC_STR | EscapeState::ESC_STR_END;
+        let mut state = TermState::default();
+        let mut colors = ColorRegistry::default();
+        let mut term = Term::default();
+
+        s.handle(&mut esc, &mut state, &mut colors, &mut term as *mut Term);
+
+        assert!(!esc.contains(EscapeState::ESC_STR));
+        assert!(!esc.contains(EscapeState::ESC_STR_END));
+    }
+
+    #[test]
+    fn handle_osc4_color_set_query_does_not_crash() {
+        // Regression: `par == 4`/`par == 104` (previously `self.type_ == 4`,
+        // which could never be true here) gates whether `p` is read from
+        // self.args[2]. Getting that wrong left `p` null unconditionally,
+        // and the unconditional `CStr::from_ptr(p)` a few lines down
+        // segfaulted on every OSC 4 / OSC 104 sequence.
+        let mut s = seq(b']', b"4;1;red");
+        let mut esc = EscapeState::ESC_STR | EscapeState::ESC_STR_END;
+        let mut state = TermState::default();
+        let mut colors = ColorRegistry::default();
+        let mut term = Term::default();
+
+        s.handle(&mut esc, &mut state, &mut colors, &mut term as *mut Term);
+
+        assert!(!esc.contains(EscapeState::ESC_STR));
+    }
+
+    #[test]
+    fn handle_with_parsed_args_does_not_double_free() {
+        // Regression test: handle() used to take ownership of self.args[0]
+        // (a pointer into self.buf's own allocation) via CString::from_raw,
+        // so dropping it freed memory self.buf still owned -- a double free
+        // whenever narg > 0 (i.e. essentially any real OSC/DCS/PM sequence).
+        let mut s = seq(b']', b"0;window title");
+        let mut esc = EscapeState::ESC_STR | EscapeState::ESC_STR_END;
+        let mut state = TermState::default();
+        let mut colors = ColorRegistry::default();
+        let mut term = Term::default();
+
+        s.handle(&mut esc, &mut state, &mut colors, &mut term as *mut Term);
+
+        assert!(!esc.contains(EscapeState::ESC_STR));
     }
 }
