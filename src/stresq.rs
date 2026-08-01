@@ -1,6 +1,7 @@
 use crate::colors::ColorRegistry;
 use crate::config;
 use crate::csiesq::STR_BUF_SIZ;
+use crate::term_state::TermMode;
 use crate::term_state::TermState;
 use crate::terminal::EscapeState;
 use crate::terminal::Term;
@@ -217,8 +218,36 @@ impl StrEscape {
                 x => {
                     eprintln!("erresc: unknown osc par {}", x);
                 }
-                _ => {}
             },
+
+            // old title set compatibility
+            b'k' => {
+                // TODO
+                // xsettitle(strescseq.args[0]);
+                return;
+            }
+
+            // DCS -- Device Control String
+            b'P' => {
+                let term_mode = unsafe { &mut (*term_ptr).state.mode };
+
+                if term_mode.contains(TermMode::Sixel) {
+                    term_mode.remove(TermMode::Sixel);
+
+                    // TODO: continue sixel decoding
+                }
+            }
+
+            // APC -- Application Program Command
+            b'_' => {
+                // TODO: implement APC handling
+            }
+
+            // PM -- Privacy Message
+            b'^' => {
+                return;
+            }
+
             _ => {}
         }
 
@@ -227,8 +256,6 @@ impl StrEscape {
     }
 
     pub fn parse(&mut self) {
-        let mut c = 0;
-
         self.narg = 0;
         // buf holds exactly `len` bytes (no reserved slot for a
         // terminator), so grow it by one before writing the sentinel
