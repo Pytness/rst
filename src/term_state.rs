@@ -1069,6 +1069,8 @@ impl TermState {
     }
 
     pub fn tinsertblank(&mut self, n: usize) {
+        let n = n.min(self.col - self.c.x);
+
         let src = self.c.x;
         let dst = self.c.x + n;
 
