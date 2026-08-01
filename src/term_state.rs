@@ -15,6 +15,79 @@ pub static mut PID: i32 = 0;
 pub static mut SU: usize = 0;
 pub static mut TWRITE_ABORTED: bool = false;
 
+/// fd for the raw-bytes-read-from-the-pty log (child's output), or -1 if disabled.
+static mut LOG_READ_FD: i32 = -1;
+/// fd for the raw-bytes-written-to-the-pty log (our input to the child), or -1 if disabled.
+static mut LOG_WRITE_FD: i32 = -1;
+
+/// Opens `rst-read.log` and `rst-write.log` (truncated) in the current
+/// directory to capture the raw tty byte streams. Best-effort: a failure to
+/// open either file just leaves that log disabled, it doesn't stop the
+/// terminal from starting.
+pub fn init_tty_logs() {
+    unsafe fn open_log(path: &std::ffi::CStr) -> i32 {
+        let fd = unsafe {
+            libc::open(
+                path.as_ptr(),
+                libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC,
+                0o644,
+            )
+        };
+
+        if fd < 0 {
+            eprintln!(
+                "Error opening {}: {}",
+                path.to_string_lossy(),
+                std::io::Error::last_os_error()
+            );
+        }
+
+        fd
+    }
+
+    unsafe {
+        *(&raw mut LOG_READ_FD) = open_log(c"rst-read.log");
+        *(&raw mut LOG_WRITE_FD) = open_log(c"rst-write.log");
+    }
+}
+
+/// Appends `buf` verbatim to `*fd_ptr` (no framing, timestamps, or separators).
+/// On write failure the log is closed and disabled for the rest of the run.
+unsafe fn log_bytes(fd_ptr: *mut i32, buf: &[u8]) {
+    unsafe {
+        let fd = *fd_ptr;
+        if fd < 0 || buf.is_empty() {
+            return;
+        }
+
+        let ptr = buf.as_ptr() as *const libc::c_void;
+        let mut written = 0usize;
+
+        while written < buf.len() {
+            let r = libc::write(fd, ptr.add(written), buf.len() - written);
+
+            if r <= 0 {
+                eprintln!("Error writing tty log, disabling it for the rest of the run");
+                libc::close(fd);
+                *fd_ptr = -1;
+                return;
+            }
+
+            written += r as usize;
+        }
+    }
+}
+
+/// Logs bytes actually read from the pty (the child's output).
+pub fn log_tty_read(buf: &[u8]) {
+    unsafe { log_bytes(&raw mut LOG_READ_FD, buf) };
+}
+
+/// Logs bytes actually written to the pty (our input to the child).
+pub fn log_tty_write(buf: &[u8]) {
+    unsafe { log_bytes(&raw mut LOG_WRITE_FD, buf) };
+}
+
 pub const DECOR_DEFAULT_COLOR: u32 = 0x0FFFFFF;
 pub const IMAGE_PLACEHOLDER_CHAR: char = '\u{10EEEE}';
 pub const IMAGE_PLACEHOLDER_CHAR_OLD: char = '\u{EEEE}';
@@ -885,6 +958,9 @@ impl TermState {
                     let r = libc::write(CMDFD, s, count);
                     if r < 0 {
                         panic!("write failed on tty: {}", std::io::Error::last_os_error());
+                    }
+                    if r > 0 {
+                        log_tty_write(std::slice::from_raw_parts(s as *const u8, r as usize));
                     }
                     if r < n as isize {
                         n -= r as usize;

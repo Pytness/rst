@@ -93,6 +93,7 @@ impl Term {
         out: Option<&str>,
         args: Option<&[&str]>,
     ) -> i32 {
+        crate::term_state::init_tty_logs();
 
         if let Some(out) = out {
             self.state.mode.insert(TermMode::Print);
@@ -304,6 +305,13 @@ impl Term {
 
                     if r < 0 {
                         panic!("write failed on tty: {}", std::io::Error::last_os_error());
+                    }
+
+                    if r > 0 {
+                        crate::term_state::log_tty_write(std::slice::from_raw_parts(
+                            s as *const u8,
+                            r as usize,
+                        ));
                     }
 
                     if r < n as isize {
@@ -862,7 +870,13 @@ impl Term {
                 1
             } else {
                 let b = &raw mut BUF as *mut libc::c_void;
-                libc::read(CMDFD, b.add(BUF_WRITTEN), BUF_SIZE - BUF_WRITTEN)
+                let n = libc::read(CMDFD, b.add(BUF_WRITTEN), BUF_SIZE - BUF_WRITTEN);
+
+                if n > 0 {
+                    crate::term_state::log_tty_read(&BUF[BUF_WRITTEN..BUF_WRITTEN + n as usize]);
+                }
+
+                n
             };
 
             match ret {
