@@ -3,7 +3,7 @@ use std::ptr::null_mut;
 
 use crate::colors::{Color, ColorRegistry};
 use crate::config::{DEFAULTBG, VTIDEN};
-use crate::csiesq::{CSIEscape, STR_TERM_ST};
+use crate::csiesq::{CSIEscape, STR_TERM_BEL, STR_TERM_ST};
 use crate::stresq::StrEscape;
 use crate::term_state::{CMDFD, CursorMovement, IOFD, PID, SU, TermMode, TermState};
 pub use crate::term_state::{IS_TRUECOL, TWRITE_ABORTED};
@@ -508,10 +508,8 @@ impl Term {
             // BEL (\a)
             0x07 => {
                 if self.esc.contains(EscapeState::ESC_STR_END) {
-                    // backwards compatibility to xterm
-                    // TODO: implemet streescseq handling
-                    // strescseq.term = STR_TERM_BEL;
-                    // strhandle();
+                    self.strescseq.term = STR_TERM_BEL.as_ptr();
+                    self.strhandle();
                 } else {
                     // TODO: implement ring bell
                     // xbell();
@@ -968,8 +966,6 @@ impl Term {
         }
     }
 }
-
-fn strhandle() {}
 
 fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
     unsafe {
