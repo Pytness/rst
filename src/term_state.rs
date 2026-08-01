@@ -474,9 +474,11 @@ impl TermState {
 
         // The table is proudly stolen from rxvt (and from st)
 
-        if self.trantbl[self.charset] == Charset::Graphic0 && BETWEEN!(u, 'A', '~') {
-            self.line[y][x].u = VT100_0[(u as usize) - 0x41];
-        }
+        let u = if self.trantbl[self.charset] == Charset::Graphic0 && BETWEEN!(u, 'A', '~') {
+            VT100_0[(u as usize) - 0x41]
+        } else {
+            u
+        };
 
         if self.line[y][x].mode.contains(GlyphAttribute::ATTR_WIDE) {
             if x + 1 < self.col {
