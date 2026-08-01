@@ -638,6 +638,7 @@ impl Term {
 
             _ => {
                 // ignore other control codes
+                interrupt_sequence = true;
             }
         }
 
