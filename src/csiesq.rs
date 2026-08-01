@@ -12,8 +12,8 @@ pub const ESC_BUF_SIZ: usize = 128 * UTF_SIZ;
 pub const ESC_ARG_SIZ: usize = 16;
 pub const STR_BUF_SIZ: usize = ESC_BUF_SIZ;
 pub const STR_ARG_SIZ: usize = ESC_ARG_SIZ;
-pub const STR_TERM_ST: &[u8] = b"\x1b\\";
-pub const STR_TERM_BEL: &[u8] = b"\007";
+pub const STR_TERM_ST: &[u8] = b"\x1b\\\0";
+pub const STR_TERM_BEL: &[u8] = b"\x07\0";
 
 macro_rules! DEFAULT {
     ($src:expr, $value:expr) => {
