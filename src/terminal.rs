@@ -10,6 +10,8 @@ pub use crate::term_state::{IS_TRUECOL, TWRITE_ABORTED};
 use crate::win::{TermWindow, WinMode};
 use crate::{BETWEEN, config};
 use bitflags::bitflags;
+use signal_hook::consts::SIGCHLD;
+use signal_hook::iterator::Signals;
 
 use crate::term_state::Charset;
 
@@ -91,7 +93,6 @@ impl Term {
         out: Option<&str>,
         args: Option<&[&str]>,
     ) -> i32 {
-        let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
 
         if let Some(out) = out {
             self.state.mode.insert(TermMode::Print);
@@ -173,8 +174,7 @@ impl Term {
                 _ => {
                     libc::close(s);
                     CMDFD = m;
-                    libc::sigemptyset(&mut sa.sa_mask);
-                    libc::sigaction(libc::SIGCHLD, &sa, null_mut());
+                    install_sigchld_handler();
                 }
             }
 
@@ -970,6 +970,41 @@ impl Term {
     }
 }
 
+/// Reaps the child shell in the background and mirrors st's `sigchld()`:
+/// terminate with the child's exit status (or the signal that killed it)
+/// once the tracked `pid` shows up in a `waitpid`, so a dead shell doesn't
+/// leave the terminal running against a closed pty.
+fn install_sigchld_handler() {
+    let mut signals = Signals::new([SIGCHLD]).expect("failed to register SIGCHLD handler");
+
+    std::thread::spawn(move || {
+        for _ in signals.forever() {
+            unsafe {
+                loop {
+                    let mut stat: i32 = 0;
+                    let p = libc::waitpid(-1, &mut stat, libc::WNOHANG);
+
+                    if p <= 0 {
+                        break;
+                    }
+
+                    if p == PID {
+                        if libc::WIFEXITED(stat) && libc::WEXITSTATUS(stat) != 0 {
+                            eprintln!("child exited with status {}", libc::WEXITSTATUS(stat));
+                            std::process::exit(1);
+                        } else if libc::WIFSIGNALED(stat) {
+                            eprintln!("child terminated due to signal {}", libc::WTERMSIG(stat));
+                            std::process::exit(1);
+                        }
+
+                        libc::_exit(0);
+                    }
+                }
+            }
+        }
+    });
+}
+
 fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
     unsafe {
         let pw = libc::getpwuid(libc::getuid());
@@ -1003,13 +1038,12 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
             vec![sh, std::ptr::null(), std::ptr::null()]
         };
 
-        // TODO: handle signals
-        // signal(SIGCHLD, SIG_DFL);
-        // signal(SIGHUP, SIG_DFL);
-        // signal(SIGINT, SIG_DFL);
-        // signal(SIGQUIT, SIG_DFL);
-        // signal(SIGTERM, SIG_DFL);
-        // signal(SIGALRM, SIG_DFL);
+        libc::signal(libc::SIGCHLD, libc::SIG_DFL);
+        libc::signal(libc::SIGHUP, libc::SIG_DFL);
+        libc::signal(libc::SIGINT, libc::SIG_DFL);
+        libc::signal(libc::SIGQUIT, libc::SIG_DFL);
+        libc::signal(libc::SIGTERM, libc::SIG_DFL);
+        libc::signal(libc::SIGALRM, libc::SIG_DFL);
 
         macro_rules! unsetenv {
             ($name:expr) => {

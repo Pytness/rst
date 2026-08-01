@@ -17,3 +17,7 @@ rustybuzz = "0.20.1"
 bytemuck = "1.25.0"
 unicode-width = "0.2.2"
 ahash = "0.8.12"
+signal-hook = "0.4.4"
+
+# [profile.release]
+# debug = true
