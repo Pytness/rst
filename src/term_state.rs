@@ -974,7 +974,7 @@ impl TermState {
     }
 
     pub fn tputc_char(&mut self, u: char) {
-        let width = if (u as u32) < 127 && !self.mode.contains(TermMode::Utf8) {
+        let width = if (u as u32) < 127 || !self.mode.contains(TermMode::Utf8) {
             1
         } else {
             unicode_width::UnicodeWidthChar::width(u).unwrap_or(1)

@@ -346,7 +346,7 @@ impl Term {
         let mut utfbuf = [0u8; 4];
         let control = is_control(u);
 
-        let len = if (u as u32) < 127 && !self.state.mode.contains(TermMode::Utf8) {
+        let len = if (u as u32) < 127 || !self.state.mode.contains(TermMode::Utf8) {
             utfbuf[0] = u as u8;
             1
         } else {
