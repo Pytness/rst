@@ -487,7 +487,7 @@ impl TermState {
             }
         } else if self.line[y][x].mode.contains(GlyphAttribute::ATTR_WDUMMY) {
             self.line[y][x - 1].u = ' ';
-            self.line[y][x - 1].mode &= !GlyphAttribute::ATTR_WDUMMY;
+            self.line[y][x - 1].mode.remove(GlyphAttribute::ATTR_WIDE);
         }
 
         let is_classic_placeholder = self.line[y][x].tgetisclassicplaceholder();
