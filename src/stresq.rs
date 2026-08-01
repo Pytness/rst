@@ -6,7 +6,6 @@ use crate::term_state::TermState;
 use crate::terminal::EscapeState;
 use crate::terminal::Term;
 use std::ffi::CStr;
-use std::ffi::CString;
 use std::io::Cursor;
 use std::io::Write as _;
 use std::ptr::null;
@@ -90,7 +89,7 @@ impl StrEscape {
         let narg = self.narg;
         let par: i32 = if self.narg > 0 {
             unsafe {
-                let cstr = CString::from_raw(self.args[0] as *mut i8);
+                let cstr = CStr::from_ptr(self.args[0] as *const i8);
                 let par = cstr.to_str().unwrap_or_default();
                 par.parse::<i32>().unwrap_or(0)
             }
@@ -153,7 +152,7 @@ impl StrEscape {
                         .to_str()
                         .unwrap_or_default();
 
-                    if p_str != "?" {
+                    if p_str == "?" {
                         self.osc_color_response(
                             &colors,
                             par,
@@ -177,7 +176,7 @@ impl StrEscape {
                 4 | 104 => 'color_set: {
                     let mut p = null();
 
-                    if self.type_ == 4 {
+                    if par == 4 {
                         if self.narg < 3 {
                             break 'color_set;
                         }
@@ -186,7 +185,7 @@ impl StrEscape {
                     }
 
                     let j = if self.narg > 1 {
-                        let cstr = unsafe { CString::from_raw(self.args[1] as *mut i8) };
+                        let cstr = unsafe { CStr::from_ptr(self.args[1] as *const i8) };
                         let par = cstr.to_str().unwrap_or_default();
                         par.parse::<i32>().unwrap_or(0)
                     } else {
@@ -199,7 +198,7 @@ impl StrEscape {
                     if !p.is_null() && p_str != "?" {
                         self.osc_color_response(colors, j, 0, true, term_ptr);
                     } else if j >= 0 && colors.set_color_name(j as usize, p_str) {
-                        if self.type_ == 104 && self.narg <= 1 {
+                        if par == 104 && self.narg <= 1 {
                             colors.load_colors();
                             return;
                         }
