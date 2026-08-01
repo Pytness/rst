@@ -1083,7 +1083,7 @@ impl TermState {
 
     pub fn tinsertblankline(&mut self, n: usize) {
         if BETWEEN!(self.c.y, self.top, self.bot) {
-            self.tscrollup(self.c.y, n);
+            self.tscrolldown(self.c.y, n);
         }
     }
 
