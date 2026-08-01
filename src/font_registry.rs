@@ -137,7 +137,7 @@ impl FontFace {
         };
 
         let mut vector = FT_Vector { x: 0, y: 0 };
-        println!(
+        eprintln!(
             "Setting transform for font '{}': matrix xx={:?}, xy={:?}, yx={:?}, yy={:?}",
             self.ft_face.family_name().unwrap_or("unknown".to_string()),
             matrix.xx,
@@ -177,7 +177,7 @@ fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
     let face_index = fmatch.face_index();
     let filename = fmatch.filename().unwrap_or("unknown");
 
-    println!(
+    eprintln!(
         "Matched font: '{}', requested slant={:?}, weight={:?}, got slant={:?}, weight={:?}, face_index={:?}, filename='{}'",
         name, slant, weight, match_slant, match_weight, face_index, filename
     );
@@ -204,7 +204,7 @@ fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
         unsafe { *matrix }
     };
 
-    println!(
+    eprintln!(
         "Font matrix: xx={:?}\n, xy={:?}\n, yx={:?}\n, yy={:?}",
         matrix.xx, matrix.xy, matrix.yx, matrix.yy
     );
@@ -258,7 +258,7 @@ impl FontRegistry {
         let bold = match_pattern(&pattern);
 
         if regular.is_none() {
-            println!("Warning: failed to find regular style for font '{}'", name);
+            eprintln!("Warning: failed to find regular style for font '{}'", name);
 
             return;
         }
@@ -284,14 +284,14 @@ impl FontRegistry {
         let num = (*raw).num_fixed_sizes;
 
         if num == 0 {
-            println!(
+            eprintln!(
                 "Font '{}' does not have fixed sizes, skipping color size setting",
                 ft_face.family_name().unwrap_or("unknown".to_string())
             );
             return;
         }
 
-        println!(
+        eprintln!(
             "Font '{}' has {} fixed sizes, selecting best match for pixel size {}",
             ft_face.family_name().unwrap_or("unknown".to_string()),
             num,
@@ -305,7 +305,7 @@ impl FontRegistry {
         let mut best_match_index = 0;
 
         for (i, size) in availables_sizes.iter().enumerate() {
-            println!(
+            eprintln!(
                 "Available size {}: width={}, height={}, pixel_size={}",
                 i, size.width, size.height, size.y_ppem
             );
@@ -329,7 +329,7 @@ impl FontRegistry {
 
         for font in &self.fonts {
             for style in font.styles().iter() {
-                println!(
+                eprintln!(
                     "Setting char size for font '{}': char_size={}, dpi={}",
                     style.ft_face.family_name().unwrap_or("unknown".to_string()),
                     char_size,
@@ -343,7 +343,7 @@ impl FontRegistry {
                         .expect("failed to set char size");
                 } else {
                     self.set_color_size(&style.ft_face, char_size);
-                    println!(
+                    eprintln!(
                         "Skipping char size setting for font '{}' because it has color glyphs",
                         style.ft_face.family_name().unwrap_or("unknown".to_string())
                     );

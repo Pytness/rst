@@ -74,7 +74,7 @@ impl<'a> App<'a> {
         let mut term = term;
 
         let ttyfd = term.ttynew(None, Some(config::SHELL), None, None);
-        println!("ttyfd: {ttyfd}");
+        eprintln!("ttyfd: {ttyfd}");
 
         let mut font_registry = FontRegistry::new();
 
@@ -119,7 +119,7 @@ impl<'a> App<'a> {
             return;
         }
 
-        // println!("key event: {:?}", event);
+        // eprintln!("key event: {:?}", event);
 
         let PhysicalKey::Code(code) = event.physical_key else {
             return;
@@ -129,11 +129,11 @@ impl<'a> App<'a> {
         if code == KeyCode::ControlLeft {
             match event.state {
                 ElementState::Pressed => {
-                    println!("Control held");
+                    eprintln!("Control held");
                     // highlighturls();
                 }
                 ElementState::Released => {
-                    println!("Control released");
+                    eprintln!("Control released");
                     // unhighlighturls();
                 }
             }
@@ -175,7 +175,7 @@ impl<'a> App<'a> {
         if len == 0 {
             return;
         }
-        println!("Composed text ({}): {:?}", len, text);
+        eprintln!("Composed text ({}): {:?}", len, text);
 
         let mut buffer = [b'\0'; 64];
         buffer[..len].copy_from_slice(&bytes.iter().take(len).cloned().collect::<Vec<u8>>());
@@ -183,15 +183,15 @@ impl<'a> App<'a> {
         const MOD1: bool = false;
         // TODO: if (len == 1 && e->state & Mod1Mask)
         if len == 1 && MOD1 {
-            println!("Single character input: {}", buffer[0] as char);
+            eprintln!("Single character input: {}", buffer[0] as char);
             if self.term.win.mode.contains(WinMode::EightBit) || true {
-                println!("8-bit mode enabled, treating input as 8-bit character");
+                eprintln!("8-bit mode enabled, treating input as 8-bit character");
                 if buffer[0] < 0o177 {
                     let c = buffer[0] | 0x80;
                     len = (c as char).len_utf8();
                 }
             } else {
-                println!("8-bit mode disabled, treating input as UTF-8 character");
+                eprintln!("8-bit mode disabled, treating input as UTF-8 character");
                 buffer[1] = b'\0';
                 buffer[0] = b'\x1b';
                 len = 2;
@@ -252,7 +252,7 @@ impl<'a> App<'a> {
                 NonZeroU32::new(size.height).unwrap(),
             );
         } else {
-            println!("Resize event received before GL surface was created, ignoring.");
+            eprintln!("Resize event received before GL surface was created, ignoring.");
         }
     }
 
@@ -717,7 +717,7 @@ impl<'a> ApplicationHandler for App<'a> {
         match event {
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.keyboard_modifiers = modifiers.state();
-                println!("Modifiers changed: {:?}", self.keyboard_modifiers);
+                eprintln!("Modifiers changed: {:?}", self.keyboard_modifiers);
             }
             WindowEvent::KeyboardInput {
                 event,
@@ -742,7 +742,7 @@ impl<'a> ApplicationHandler for App<'a> {
                 }
 
                 // let duration = start.elapsed();
-                // println!("Redrawn in {} ms", duration.as_millis());
+                // eprintln!("Redrawn in {} ms", duration.as_millis());
             }
 
             WindowEvent::CloseRequested => {

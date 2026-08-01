@@ -53,14 +53,14 @@ impl GlHandler {
                 self.gl_context =
                     Some(create_gl_context(&window, &gl_config).treat_as_possibly_current());
 
-                println!("Picked a config with {} samples", gl_config.num_samples());
+                eprintln!("Picked a config with {} samples", gl_config.num_samples());
 
                 Some((window, gl_config))
             }
             GlDisplayCreationState::Init => {
                 let gl_config = self.gl_context.as_ref().unwrap().config();
 
-                println!("Reusing config with {} samples", gl_config.num_samples());
+                eprintln!("Reusing config with {} samples", gl_config.num_samples());
 
                 match glutin_winit::finalize_window(event_loop, window_attributes(), &gl_config) {
                     Ok(window) => Some((window, gl_config)),

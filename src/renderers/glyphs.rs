@@ -155,7 +155,7 @@ impl<'a> TextRenderer<'a> {
         // ```
         let err = unsafe { freetype::ffi::FT_Library_SetLcdFilter(FT_LIB.raw(), 2) };
         if err != freetype::ffi::FT_Err_Ok {
-            println!("Warning: failed to set LCD filter (error code {})", err);
+            eprintln!("Warning: failed to set LCD filter (error code {})", err);
         }
 
         font_registry.set_char_size(px_size as isize, None);

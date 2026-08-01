@@ -217,7 +217,7 @@ impl Term {
                     break;
                 }
             } else {
-                println!("Non-UTF8 mode is not supported in this implementation");
+                eprintln!("Non-UTF8 mode is not supported in this implementation");
                 u = (buffer[i] & 0xFF) as char;
                 charsize = 1;
             }
@@ -265,7 +265,7 @@ impl Term {
         while n > 0 {
             retries_left -= 1;
             if retries_left <= 0 {
-                println!("Could not write {} bytes to tty", n);
+                eprintln!("Could not write {} bytes to tty", n);
                 break;
             }
 
@@ -320,7 +320,7 @@ impl Term {
                         break;
                     }
                 } else {
-                    println!("select returned but cmdfd is not writable");
+                    eprintln!("select returned but cmdfd is not writable");
                 }
 
                 if libc::FD_ISSET(CMDFD, &mut rfd) {
@@ -392,7 +392,7 @@ impl Term {
                     }
 
                     self.strescseq.size *= 2;
-                    println!(
+                    eprintln!(
                         "esc: ESC_STR: strescseq.buf.reserve({})",
                         self.strescseq.size
                     );
