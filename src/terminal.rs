@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::ptr::null_mut;
 
 use crate::colors::{Color, ColorRegistry};
@@ -89,9 +89,9 @@ impl Term {
     pub fn ttynew(
         &mut self,
         line: Option<&str>,
-        cmd: Option<&str>,
+        cmd: Option<&CStr>,
         out: Option<&str>,
-        args: Option<&[&str]>,
+        args: Option<&[&CStr]>,
     ) -> i32 {
         crate::term_state::init_tty_logs();
 
@@ -1019,7 +1019,7 @@ fn install_sigchld_handler() {
     });
 }
 
-fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
+fn execsh(cmd: Option<&CStr>, args: Option<&[&CStr]>) {
     unsafe {
         let pw = libc::getpwuid(libc::getuid());
 
@@ -1027,22 +1027,25 @@ fn execsh(cmd: Option<&str>, args: Option<&[&str]>) {
             panic!("getpwuid: {}", std::io::Error::last_os_error());
         }
 
-        let mut sh = libc::getenv(c"SHELL".as_ptr());
+        let default_shell = c"/bin/sh";
+        let shell_env = libc::getenv(c"SHELL".as_ptr());
 
-        let default_shell = CString::new(cmd.unwrap_or("/bin/sh"))
-            .expect("default shell command contained a NUL byte");
-
-        if sh.is_null() {
-            sh = if *((*pw).pw_shell) != 0 {
+        let sh = if let Some(cmd) = cmd {
+            cmd.as_ptr() as *mut libc::c_char
+        } else if !shell_env.is_null() {
+            shell_env as *mut libc::c_char
+        } else {
+            if *((*pw).pw_shell) != 0 {
                 (*pw).pw_shell
             } else {
                 default_shell.as_ptr() as *mut libc::c_char
-            };
-        }
+            }
+        };
 
         let args: Vec<*const libc::c_char> = if let Some(args) = args {
             let mut cargs: Vec<*const libc::c_char> = Vec::with_capacity(args.len() + 2);
             cargs.push(sh);
+
             for arg in args {
                 cargs.push(arg.as_ptr() as *const libc::c_char);
             }

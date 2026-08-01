@@ -73,7 +73,7 @@ impl<'a> App<'a> {
     ) -> Self {
         let mut term = term;
 
-        let ttyfd = term.ttynew(None, Some(config::SHELL), None, None);
+        let ttyfd = term.ttynew(None, config::SHELL, None, None);
         eprintln!("ttyfd: {ttyfd}");
 
         let mut font_registry = FontRegistry::new();
