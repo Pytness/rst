@@ -30,22 +30,35 @@ fn is_control(c: char) -> bool {
     is_control_c0(c) || is_control_c1(c)
 }
 
-fn utf8decode(buf: &[u8]) -> Option<char> {
-    for utf_len in 1..=4 {
-        let end = utf_len.min(buf.len());
-        match std::str::from_utf8(&buf[..end]) {
-            Ok(s) => {
-                let u = s
-                    .chars()
-                    .next()
-                    .expect("utf8decode expected at least one character");
-                return Some(u);
-            }
-            _ => continue,
-        }
-    }
+/// Decodes a single Unicode scalar value from the start of `buffer`.
+///
+/// On success, returns the decoded `char` along with the number of bytes it
+/// occupied in `buffer`.
+///
+/// If `buffer` starts with an invalid or malformed UTF-8 sequence, returns
+/// [`char::REPLACEMENT_CHARACTER`] along with the number of bytes that
+/// sequence should be skipped.
+///
+/// Returns `None` if `buffer` is empty or it starts with a truncated and
+/// potentially valid sequence once more bytes arrive.
+fn utf8decode(buffer: &[u8]) -> Option<(char, usize)> {
+    let probe = &buffer[..buffer.len().min(4)];
 
-    return None;
+    match std::str::from_utf8(probe) {
+        Ok(s) => {
+            let c = s.chars().next()?;
+            Some((c, c.len_utf8()))
+        }
+        Err(e) if e.valid_up_to() > 0 => {
+            let valid_bytes = &probe[..e.valid_up_to()];
+            let utf = unsafe { std::str::from_utf8_unchecked(valid_bytes) };
+
+            let c = utf.chars().next()?;
+
+            Some((c, c.len_utf8()))
+        }
+        Err(e) => e.error_len().map(|n| (char::REPLACEMENT_CHARACTER, n)),
+    }
 }
 
 bitflags! {
@@ -214,9 +227,9 @@ impl Term {
 
                 let u_opt = utf8decode(&buffer[i..buflen]);
 
-                if let Some(u_decoded) = u_opt {
+                if let Some((u_decoded, decoded_len)) = u_opt {
                     u = u_decoded;
-                    charsize = u.len_utf8();
+                    charsize = decoded_len;
                 } else {
                     break;
                 }
