@@ -936,12 +936,9 @@ impl Term {
                     BUF_WRITTEN -= written;
 
                     // keep any incomplete UTF-8 byte sequence for the next call
-                    if written <= BUF_WRITTEN && BUF_WRITTEN > 0 {
-                        let remainding = BUF_WRITTEN - written;
-
+                    if BUF_WRITTEN > 0 {
                         let b = &raw mut BUF as *mut libc::c_void;
-                        std::ptr::copy(b.add(written), b, remainding);
-                        std::ptr::write_bytes(b.add(remainding), 0, BUF_SIZE - remainding);
+                        libc::memmove(b, b.add(written), BUF_WRITTEN);
                     }
 
                     return ret as usize;
