@@ -164,7 +164,27 @@ impl Term {
             return;
         }
 
-        self.state.ttywrite_pty(buffer, len);
+        let mut n = len as isize;
+        let mut start = 0;
+        let mut next = 0;
+
+        /* This is similar to how the kernel handles ONLCR for ttys */
+        while n > 0 {
+            if buffer[0] == b'\r' {
+                next = 1;
+                self.ttywriteraw_pty(b"\r\n", 2);
+            } else {
+                next = buffer
+                    .iter()
+                    .position(|&b| b == b'\r')
+                    .unwrap_or(n as usize);
+
+                self.ttywriteraw_pty(&buffer[start..next], next - start);
+            }
+
+            n -= next as isize - start as isize;
+            start = next;
+        }
     }
 
     fn twrite(&mut self, buffer: &[u8], buflen: usize, show_ctrl: bool) -> usize {
