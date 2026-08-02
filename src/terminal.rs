@@ -861,7 +861,7 @@ impl Term {
 
         let mut written = 0;
 
-        if unsafe { BUF_WRITTEN > BUF_SIZE } {
+        if unsafe { BUF_WRITTEN >= BUF_SIZE } {
             return 0;
         }
 
