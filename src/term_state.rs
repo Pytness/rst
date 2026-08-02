@@ -7,6 +7,7 @@ use crate::config;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::kitty::{tdefcolor, tsetdecorcolor, tsetdecorstyle};
 use crate::terminal::Term;
+use crate::utils::{is_control, utf8decode};
 use crate::win::WinMode;
 
 pub static mut IOFD: i32 = 1;
@@ -475,7 +476,14 @@ impl TermState {
         // The table is proudly stolen from rxvt (and from st)
 
         let u = if self.trantbl[self.charset] == Charset::Graphic0 && BETWEEN!(u, 'A', '~') {
-            VT100_0[(u as usize) - 0x41]
+            let mut buffer = [0u8; 4];
+            let v = VT100_0[(u as usize) - 0x41];
+            v.encode_utf8(&mut buffer);
+
+            match utf8decode(&buffer) {
+                Some((c, _)) => c,
+                None => u,
+            }
         } else {
             u
         };
@@ -924,10 +932,15 @@ impl TermState {
     }
 
     pub fn tputc_char(&mut self, u: char) {
+        let control = is_control(u);
         let width = if (u as u32) < 127 || !self.mode.contains(TermMode::Utf8) {
             1
         } else {
-            unicode_width::UnicodeWidthChar::width(u).unwrap_or(1)
+            if !control {
+                unicode_width::UnicodeWidthChar::width(u).unwrap_or(1)
+            } else {
+                0
+            }
         };
 
         if self.selected(self.c.x, self.c.y) {
