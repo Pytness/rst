@@ -199,7 +199,25 @@ impl Term {
             /* TODO: sixel_st.state != PS_ESC */
             if self.state.mode.contains(TermMode::Sixel) {
                 // charsize = sixel_parser_parse(&sixel_st, (const unsigned char *)buf + n, buflen - n);
-                continue;
+                //
+                // Discard bytes up to the next DCS until sixel is handled.
+                match buffer[i..buflen]
+                    .iter()
+                    .position(|&b| matches!(b, 0x07 | 0x18 | 0x1A | 0x1B))
+                {
+                    Some(0) => {
+                        u = buffer[i] as char;
+                        charsize = 1;
+                    }
+                    Some(offset) => {
+                        i += offset;
+                        continue;
+                    }
+                    None => {
+                        i = buflen;
+                        continue;
+                    }
+                }
             } else if self.state.mode.contains(TermMode::Utf8) {
                 // FIXME: assumes all chars are properly encoded
 
