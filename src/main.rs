@@ -24,6 +24,7 @@ mod stresq;
 mod term_state;
 mod terminal;
 mod text_manager;
+mod utils;
 mod win;
 
 fn main() {

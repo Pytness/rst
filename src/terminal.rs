@@ -7,6 +7,7 @@ use crate::csiesq::{CSIEscape, STR_TERM_BEL, STR_TERM_ST};
 use crate::stresq::StrEscape;
 use crate::term_state::{CMDFD, CursorMovement, IOFD, PID, SU, TermMode, TermState};
 pub use crate::term_state::{IS_TRUECOL, TWRITE_ABORTED};
+use crate::utils::{is_control, is_control_c1, utf8decode};
 use crate::win::{TermWindow, WinMode};
 use crate::{BETWEEN, config};
 use bitflags::bitflags;
@@ -17,49 +18,6 @@ use crate::term_state::Charset;
 
 const STR_BUF_SIZ: usize = 128 * 4;
 const UTF_SIZ: usize = 4;
-
-fn is_control_c0(c: char) -> bool {
-    BETWEEN!(c, '\0', '\u{1F}') || c == '\u{7F}'
-}
-
-fn is_control_c1(c: char) -> bool {
-    BETWEEN!(c, '\u{80}', '\u{9F}')
-}
-
-fn is_control(c: char) -> bool {
-    is_control_c0(c) || is_control_c1(c)
-}
-
-/// Decodes a single Unicode scalar value from the start of `buffer`.
-///
-/// On success, returns the decoded `char` along with the number of bytes it
-/// occupied in `buffer`.
-///
-/// If `buffer` starts with an invalid or malformed UTF-8 sequence, returns
-/// [`char::REPLACEMENT_CHARACTER`] along with the number of bytes that
-/// sequence should be skipped.
-///
-/// Returns `None` if `buffer` is empty or it starts with a truncated and
-/// potentially valid sequence once more bytes arrive.
-fn utf8decode(buffer: &[u8]) -> Option<(char, usize)> {
-    let probe = &buffer[..buffer.len().min(4)];
-
-    match std::str::from_utf8(probe) {
-        Ok(s) => {
-            let c = s.chars().next()?;
-            Some((c, c.len_utf8()))
-        }
-        Err(e) if e.valid_up_to() > 0 => {
-            let valid_bytes = &probe[..e.valid_up_to()];
-            let utf = unsafe { std::str::from_utf8_unchecked(valid_bytes) };
-
-            let c = utf.chars().next()?;
-
-            Some((c, c.len_utf8()))
-        }
-        Err(e) => e.error_len().map(|n| (char::REPLACEMENT_CHARACTER, n)),
-    }
-}
 
 bitflags! {
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
