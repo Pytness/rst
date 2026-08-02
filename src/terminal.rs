@@ -250,9 +250,9 @@ impl Term {
         return i;
     }
 
-    fn ttywriteraw_pty(&mut self, buffer: &[u8], len: usize) {
-        let mut wfd: libc::fd_set = unsafe { std::mem::zeroed() };
+    pub fn ttywriteraw_pty(&mut self, buffer: &[u8], len: usize) {
         let mut rfd: libc::fd_set = unsafe { std::mem::zeroed() };
+        let mut wfd: libc::fd_set = unsafe { std::mem::zeroed() };
 
         let mut n = len;
         let mut s: *const libc::c_void = buffer.as_ptr() as *const libc::c_void;
