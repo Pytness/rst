@@ -301,7 +301,15 @@ impl<'a> App<'a> {
     pub fn visibility(&mut self) {}
     pub fn unmap(&mut self) {}
     pub fn expose(&mut self) {}
-    pub fn focus(&mut self) {}
+
+    pub fn focus(&mut self) {
+        self.term.focus();
+    }
+
+    pub fn unfocus(&mut self) {
+        self.term.unfocus();
+    }
+
     pub fn bmotion(&mut self) {}
     pub fn bpress(&mut self) {}
     pub fn brelease(&mut self) {}
@@ -796,6 +804,14 @@ impl<'a> ApplicationHandler for App<'a> {
 
                 // let duration = start.elapsed();
                 // eprintln!("Redrawn in {} ms", duration.as_millis());
+            }
+
+            WindowEvent::Focused(focused) => {
+                if focused {
+                    self.focus();
+                } else {
+                    self.unfocus();
+                }
             }
 
             WindowEvent::CloseRequested => {

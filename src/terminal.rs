@@ -995,6 +995,22 @@ impl Term {
             draw();
         }
     }
+
+    pub fn focus(&mut self) {
+        self.win.mode.insert(WinMode::Focus);
+
+        if self.win.mode.contains(WinMode::Focus) {
+            self.ttywrite(b"\x1b[I", 3, true);
+        }
+    }
+
+    pub fn unfocus(&mut self) {
+        self.win.mode.remove(WinMode::Focus);
+
+        if !self.win.mode.contains(WinMode::Focus) {
+            self.ttywrite(b"\x1b[O", 3, true);
+        }
+    }
 }
 
 /// Set by the SIGCHLD-watcher thread once the tracked child has exited, to
