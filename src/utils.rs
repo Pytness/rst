@@ -40,14 +40,7 @@ pub fn utf8decode(buffer: &[u8]) -> Option<(char, usize)> {
             Some((c, c.len_utf8()))
         }
         Err(e) => match e.error_len() {
-            Some(len) => {
-                eprintln!(
-                    "Invalid UTF-8 sequence: {:?}, skipping {} bytes",
-                    &probe[..len],
-                    len
-                );
-                Some((std::char::REPLACEMENT_CHARACTER, len))
-            }
+            Some(len) => Some((std::char::REPLACEMENT_CHARACTER, len)),
             None => None,
         },
     }
