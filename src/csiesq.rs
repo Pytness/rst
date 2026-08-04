@@ -279,13 +279,15 @@ impl CSIEscape {
                         let pa = self.arg[1];
                         let pa_is_valid = pa == 1 || pa == 2 || pa == 4;
 
+                        let term = unsafe {&mut *state._term_ptr};
+
                         // TODO: replace snprintf if possible
                         let mut buffer = [0u8; 40];
                         if pi == 1 && pa_is_valid {
                             // number of sixel color registers
                             // (read, reset and read the maximum value give the same response)
                             let n = snprintf!(buffer, b"\x1b[?1;0;%dS\0", DECSIXEL_PALETTE_MAX);
-                            state.ttywrite_pty(&buffer, n as usize);
+                            term.ttywrite(&buffer, n as usize, true);
                         } else if pi == 2 && pa_is_valid {
                             // sixel graphics geometry (in pixels)
                             // (read, reset and read the maximum value give the same response)
@@ -295,7 +297,7 @@ impl CSIEscape {
                                     (state.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX)
                                 );
 
-                            state.ttywrite_pty(&buffer, n as usize);
+                            term.ttywrite(&buffer, n as usize, true);
                         } else {
                             // the number of color registers and sixel geometry can't be changed
                             // failure
