@@ -222,6 +222,9 @@ pub struct TermState {
     pub lastc: char,            // last printed char outside of sequence, 0 if control
     pub sel: Selection,
     pub tabs: Vec<u8>,
+
+    // outside of st's "pure" implementation
+    stored_cursors: [TCursor; 2], // saved cursors for normal and alternate screen
 }
 
 impl TermState {
@@ -271,8 +274,6 @@ impl TermState {
     }
 
     pub fn tcursor(&mut self, mode: CursorMovement) {
-        static mut C: [Option<TCursor>; 2] = [None, None];
-
         let alt = if self.mode.contains(TermMode::Altscreen) {
             1
         } else {
@@ -282,13 +283,13 @@ impl TermState {
         unsafe {
             match mode {
                 CursorMovement::CursorSave => {
-                    C[alt] = Some(self.c);
+                    self.stored_cursors[alt] = self.c;
                 }
                 CursorMovement::CursorLoad => {
-                    if let Some(c) = C[alt] {
-                        self.c = c;
-                        self.tmoveto(c.x, c.y);
-                    }
+                    let c = self.stored_cursors[alt];
+
+                    self.c = c;
+                    self.tmoveto(c.x, c.y);
                 }
             }
         }
