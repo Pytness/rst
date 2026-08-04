@@ -503,7 +503,7 @@ impl CSIEscape {
     }
 
     pub fn dump(&self) {
-        eprintln!("ESC[");
+        eprint!("ESC[");
 
         for i in 0..self.len {
             let c = self.buf[i] & 0xFF;
