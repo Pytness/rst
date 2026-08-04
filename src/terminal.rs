@@ -761,7 +761,7 @@ impl Term {
                 if self.state.c.y == self.state.top {
                     self.state.tscrolldown(self.state.top, 1);
                 } else {
-                    self.state.tmoveto(self.state.c.x, self.state.c.y - 1);
+                    self.state.tmoveto(self.state.c.x, self.state.c.y.saturating_sub(1));
                 }
             }
             // DECID -- Identify Terminal

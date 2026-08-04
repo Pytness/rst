@@ -170,7 +170,7 @@ impl CSIEscape {
             // CUB  -- Cursor <n> Backward
             b'D' => {
                 DEFAULT!(self.arg[0], 1);
-                state.tmoveto(state.c.x - self.arg[0] as usize, state.c.y);
+                state.tmoveto(state.c.x.saturating_sub(self.arg[0] as usize), state.c.y);
             }
 
             // CNL -- Cursor <n> Down and first col
