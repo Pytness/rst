@@ -304,11 +304,11 @@ impl CSIEscape {
                             let n = snprintf!(buffer, b"\x1b[?%d;3;0S\0", pi);
 
                             state.ttywrite_pty(&buffer, n as usize);
-                            unknown();
                         }
-                    } else {
-                        unknown();
                     }
+
+                    unknown();
+                    return;
                 }
 
                 DEFAULT!(self.arg[0], 1);
