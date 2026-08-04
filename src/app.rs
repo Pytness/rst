@@ -212,10 +212,6 @@ impl<'a> App<'a> {
         self.gl_resize(size);
         self.cresize(size.width, size.height);
 
-        self.term
-            .state
-            .ttyresize(size.width as usize, size.height as usize);
-
         unsafe {
             self.quad_renderer = Some(renderers::QuadRenderer::new(
                 self.gl
@@ -444,7 +440,7 @@ impl<'a> App<'a> {
                 .as_ref()
                 .expect("QuadRenderer is not initialized")
                 .with(|| {
-                    let proj = ortho(self.term.state.pixw as f32, self.term.state.pixh as f32);
+                    let proj = ortho(self.term.win.w as f32, self.term.win.h as f32);
 
                     self.text_renderer
                         .as_mut()
@@ -579,8 +575,8 @@ impl<'a> ApplicationHandler for App<'a> {
             // and will not be dropped while the TextRenderer is still in use.
             let font_registry: &'a FontRegistry = &*(&self.font_registry as *const _);
 
-            let width = window.inner_size().width as i32;
-            let height = window.inner_size().height as i32;
+            let width = self.term.state.pixw as i32;
+            let height = self.term.state.pixh as i32;
             TextRenderer::<'a>::new(
                 self.gl
                     .as_ref()
