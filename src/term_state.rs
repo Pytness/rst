@@ -1149,7 +1149,7 @@ impl TermState {
 
                     // DECTCEM -- Text Cursor Enable Mode
                     25 => {
-                        term.xsetmode(set, WinMode::Hide);
+                        term.xsetmode(!set, WinMode::Hide);
                     }
 
                     // x10 mouse compatibility mode (IGNORED due to using wayland)
