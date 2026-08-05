@@ -565,6 +565,15 @@ impl<'a> ApplicationHandler for App<'a> {
             .make_current(&gl_surface)
             .expect("Failed to make GL context current");
 
+        // Don't let swap_buffers block on the compositor's frame callback.
+        // On Wayland, SwapInterval::Wait can block indefinitely while the
+        // surface is occluded (e.g. on another workspace), which
+        // freezes event loop entirely and makes the compositor think
+        // we're unresponsive.
+        gl_surface
+            .set_swap_interval(gl_context, glutin::surface::SwapInterval::DontWait)
+            .expect("Failed to disable vsync");
+
         let gl = unsafe {
             glow::Context::from_loader_function(|s| {
                 let symbol =
