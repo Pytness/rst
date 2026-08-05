@@ -1000,7 +1000,7 @@ impl Term {
         self.win.mode.insert(WinMode::Focus);
 
         if self.win.mode.contains(WinMode::Focus) {
-            self.ttywrite(b"\x1b[I", 3, true);
+            self.ttywrite(b"\x1b[I", 3, false);
         }
     }
 
@@ -1008,7 +1008,7 @@ impl Term {
         self.win.mode.remove(WinMode::Focus);
 
         if !self.win.mode.contains(WinMode::Focus) {
-            self.ttywrite(b"\x1b[O", 3, true);
+            self.ttywrite(b"\x1b[O", 3, false);
         }
     }
 }
