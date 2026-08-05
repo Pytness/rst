@@ -720,6 +720,9 @@ impl TermState {
             if 0 < col && minrow < row {
                 self.tclearregion(0, minrow, col - 1, row - 1);
             }
+
+            self.tswapscreen();
+            self.tcursor(CursorMovement::CursorLoad);
         }
 
         // expand images into new terxt cells
