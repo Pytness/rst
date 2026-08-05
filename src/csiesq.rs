@@ -223,7 +223,7 @@ impl CSIEscape {
                 match self.arg[0] {
                     // below
                     0 => {
-			state.tclearregion(state.c.x, state.c.y, maxcol - 1, state.c.y);
+                        state.tclearregion(state.c.x, state.c.y, maxcol - 1, state.c.y);
                         if state.c.y < state.row - 1 {
                             state.tclearregion(0, state.c.y + 1, maxcol - 1, state.row - 1);
                         }
