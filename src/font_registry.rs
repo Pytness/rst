@@ -358,9 +358,13 @@ impl FontRegistry {
         }
     }
 
-    pub fn get_char_index(&self, char_code: char) -> Option<(usize, u32)> {
+    /// Looks up `char_code` in the face used for rendering `style`.
+    pub fn get_char_index(&self, char_code: char, style: FontStyle) -> Option<(usize, u32)> {
         for (font_index, entry) in self.fonts.iter().enumerate() {
-            let glyph_id = entry.regular().ft_face.get_char_index(char_code as usize);
+            let glyph_id = entry
+                .style(style)
+                .ft_face
+                .get_char_index(char_code as usize);
 
             if let Some(glyph_id) = glyph_id {
                 if glyph_id != 0 {
@@ -372,7 +376,8 @@ impl FontRegistry {
         None
     }
 
-    pub fn shape_text(&self, chars: &[char]) -> Vec<ShapedGlyph> {
+    /// Shapes `chars` against the face used for rendering `style`.
+    pub fn shape_text(&self, chars: &[char], style: FontStyle) -> Vec<ShapedGlyph> {
         let mut buffer = self
             .shape_buffer
             .borrow_mut()
@@ -383,7 +388,7 @@ impl FontRegistry {
         buffer.push_str(&text);
 
         let font = self.fonts.first().expect("no fonts registered");
-        let shaped = rustybuzz::shape(&font.regular().rb_face, &[], buffer);
+        let shaped = rustybuzz::shape(&font.style(style).rb_face, &[], buffer);
 
         let infos = shaped.glyph_infos();
         let positions = shaped.glyph_positions();
@@ -395,7 +400,7 @@ impl FontRegistry {
                 let (font_index, id) = if info.glyph_id != 0 {
                     (0, info.glyph_id)
                 } else {
-                    self.get_char_index(*c).unwrap_or((0, 0))
+                    self.get_char_index(*c, style).unwrap_or((0, 0))
                 };
 
                 ShapedGlyph {

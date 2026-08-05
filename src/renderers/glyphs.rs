@@ -294,6 +294,27 @@ impl<'a> TextRenderer<'a> {
         }
     }
 
+    /// Shapes contiguous of same styled cells separately.
+    fn shape_glyph_runs(&self, glyphs: &[TermGlyph]) -> Vec<ShapedGlyph> {
+        let mut shaped = Vec::with_capacity(glyphs.len());
+        let mut i = 0;
+
+        while i < glyphs.len() {
+            let style = glyphs[i].font_style;
+            let mut j = i + 1;
+            while j < glyphs.len() && glyphs[j].font_style == style {
+                j += 1;
+            }
+
+            let run_chars: Vec<char> = glyphs[i..j].iter().map(|g| g.char).collect();
+            shaped.extend(self.font_registry.shape_text(&run_chars, style));
+
+            i = j;
+        }
+
+        shaped
+    }
+
     /// Ensures the glyph is loaded and cached.
     /// Returns a tuple of (left, top, width, height, tex) to avoid holding a
     /// reference into `self.glyphs` across subsequent `self` accesses.
@@ -469,8 +490,7 @@ impl<'a> TextRenderer<'a> {
         let mut pen_x: f32 = cell_box.x as f32;
         let baseline_y: f32 = cell_box.y as f32;
 
-        let text = glyphs.iter().map(|g| g.char).collect::<Vec<char>>();
-        let shaped = self.font_registry.shape_text(&text);
+        let shaped = self.shape_glyph_runs(glyphs);
 
         let units_per_em = self.units_per_em();
         let px_size = self.px_size;
