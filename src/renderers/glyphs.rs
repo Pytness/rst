@@ -314,20 +314,26 @@ impl<'a> TextRenderer<'a> {
         glyph: &ShapedGlyph,
         style: FontStyle,
     ) -> Option<GlyphTexture> {
-        let style = self.font_registry.get_fonts()[glyph.font_index].style(style);
-        let ft_face = &style.ft_face;
-        let matrix = style.matrix;
+        let font = self.font_registry.get_fonts()[glyph.font_index].style(style);
+        let ft_face = &font.ft_face;
+        let matrix = font.matrix;
         // style.set_transform();
 
-        ft_face
-            .load_glyph(
+        let load_glyph_result = ft_face.load_glyph(
+            glyph.glyph_id,
+            LoadFlag::RENDER | LoadFlag::FORCE_AUTOHINT | LoadFlag::TARGET_NORMAL | LoadFlag::COLOR,
+        );
+
+        if let Err(err) = load_glyph_result {
+            eprintln!(
+                "Failed to load glyph {}: {:?} | from ft_face {} with style {:?}",
                 glyph.glyph_id,
-                LoadFlag::RENDER
-                    | LoadFlag::FORCE_AUTOHINT
-                    | LoadFlag::TARGET_NORMAL
-                    | LoadFlag::COLOR,
-            )
-            .expect("freetype load_glyph failed");
+                err,
+                ft_face.family_name().unwrap_or("unknown".into()),
+                style
+            );
+            return None;
+        }
 
         let glyph_slot = ft_face.glyph();
         let bitmap = glyph_slot.bitmap();
