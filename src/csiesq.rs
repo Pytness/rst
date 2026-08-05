@@ -374,17 +374,18 @@ impl CSIEscape {
 
             // DSR -- Device Status Report
             b'n' => {
+                let term = unsafe {&mut *state._term_ptr};
                 match self.arg[0] {
                     // Status Report "OK" `0n`
                     5 => {
                         const TEXT: &[u8] = b"\x1b[0n";
-                        state.ttywrite_pty(TEXT, TEXT.len());
+                        term.ttywrite(TEXT, TEXT.len(), false);
                     },
                     // Report Cursor Position (CPR) "<row>;<column>R"
                     6 => {
                         let mut buffer = [0u8; 40];
                         let len = snprintf!(buffer, b"\x1b[%i;%iR\0", state.c.y + 1, state.c.x + 1);
-                        state.ttywrite_pty(&buffer, len as usize);
+                        term.ttywrite(&buffer, len as usize, false);
                     }
                     _ => unknown(),
 
@@ -445,12 +446,13 @@ impl CSIEscape {
 
             // XTWINOPS -- Window manipulation
             b't' => {
+                let term = unsafe {&mut *state._term_ptr};
                 let mut buffer = [0u8; 40];
                 match self.arg[0] {
                     // Report text area size in pixels
                     14 => {
                         let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", state.pixh, state.pixw);
-                        state.ttywrite_pty(&buffer, len as usize);
+                        term.ttywrite(&buffer, len as usize, false);
                     }
 
                     // Report character cell sie in pixels
@@ -461,13 +463,13 @@ impl CSIEscape {
                             state.pixh / state.row,
                             state.pixw / state.col
                         );
-                        state.ttywrite_pty(&buffer, len as usize);
+                        term.ttywrite(&buffer, len as usize, false);
                     }
 
                     // Report the size of the text area in characters
                     18 => {
                         let len = snprintf!(buffer, b"\x1b[8;%i;%it\0", state.row, state.col);
-                        state.ttywrite_pty(&buffer, len as usize);
+                        term.ttywrite(&buffer, len as usize, false);
                     }
 
                     _ => unknown(),
