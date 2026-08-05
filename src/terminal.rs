@@ -997,7 +997,7 @@ impl Term {
     }
 
     pub fn focus(&mut self) {
-        self.win.mode.insert(WinMode::Focus);
+        self.win.mode.insert(WinMode::Focused);
 
         if self.win.mode.contains(WinMode::Focus) {
             self.ttywrite(b"\x1b[I", 3, false);
@@ -1005,9 +1005,9 @@ impl Term {
     }
 
     pub fn unfocus(&mut self) {
-        self.win.mode.remove(WinMode::Focus);
+        self.win.mode.remove(WinMode::Focused);
 
-        if !self.win.mode.contains(WinMode::Focus) {
+        if self.win.mode.contains(WinMode::Focus) {
             self.ttywrite(b"\x1b[O", 3, false);
         }
     }
