@@ -201,7 +201,6 @@ impl<'a> App<'a> {
         if len == 0 {
             return;
         }
-        eprintln!("Composed text ({}): {:?}", len, text);
 
         let mut buffer = [b'\0'; 64];
         buffer[..len].copy_from_slice(&bytes.iter().take(len).cloned().collect::<Vec<u8>>());
