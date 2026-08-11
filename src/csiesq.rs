@@ -315,7 +315,7 @@ impl CSIEscape {
                 state.tscrollup(state.top, self.arg[0] as usize);
             }
 
-            // SD -- Scroll Mn> line down
+            // SD -- Scroll <n> line down
             b'T' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tscrolldown(state.top, self.arg[0] as usize);
