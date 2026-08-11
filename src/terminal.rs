@@ -849,7 +849,7 @@ impl Term {
                 self.state.mode.insert(TermMode::Sixel);
             }
             _ => {
-                eprintln!("erresc: unknown csi ");
+                eprint!("erresc: unknown csi ");
                 self.csiescseq.dump()
             }
         }

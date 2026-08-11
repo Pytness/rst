@@ -260,7 +260,7 @@ impl StrEscape {
             _ => {}
         }
 
-        eprintln!("erresc: unknown str ");
+        eprint!("erresc: unknown str ");
         self.strdump();
     }
 
@@ -309,7 +309,7 @@ impl StrEscape {
     }
 
     fn strdump(&self) {
-        eprintln!("ESC{}", self.type_ as char);
+        eprint!("ESC{}", self.type_ as char);
         for i in 0..self.len {
             let c = self.buf[i] as char;
 
