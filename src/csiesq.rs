@@ -4,7 +4,7 @@ use crate::config::VTIDEN;
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
 use crate::snprintf;
 use crate::term_state::{CursorMovement, TermMode, TermState};
-use crate::win::TermWindow;
+use crate::win::{TermWindow, WinMode};
 
 pub const UTF_INVALID: usize = 0xFFFD;
 pub const UTF_SIZ: usize = 4;
@@ -486,6 +486,15 @@ impl CSIEscape {
                                 // Supported and screen updates are shown as usual
                                 // (e.g. as soon as they arrive)
                                 2
+                            }
+
+                            // In Band Resize Notifications
+                            2048 => {
+                                if win.mode.contains(WinMode::ResizeNotification) {
+                                    1
+                                } else {
+                                    2
+                                }
                             }
                             _ => {
                                 eprintln!("erresc: unknown DSR-EXT {}", self.arg[0]);

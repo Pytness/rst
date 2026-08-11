@@ -21,6 +21,7 @@ bitflags! {
         const MouseMany   = 1 << 15;
         const BracketedPaste  = 1 << 16;
         const NumLock     = 1 << 17;
+        const ResizeNotification  = 1 << 18;
 
         const MODE_MOUSE =
               Self::MouseButton.bits()

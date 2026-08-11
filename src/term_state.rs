@@ -1261,6 +1261,11 @@ impl TermState {
                         }
                     }
 
+                    2048 => {
+                    // In-Band Window Resize Notifications
+                        term.xsetmode(set, WinMode::ResizeNotification);
+                    }
+
 
                     // Not implemented mouse modes. See explanations here
                     1001 | // Mouse highlihgt mode; can hang the terminal by design
