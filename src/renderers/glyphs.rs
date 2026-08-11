@@ -675,6 +675,7 @@ impl<'a> TextRenderer<'a> {
 
             gl.draw_arrays(glow::TRIANGLES, 0, all_vertices.len() as i32);
             gl.disable(glow::SCISSOR_TEST);
+            gl.disable(glow::BLEND);
 
             gl.bind_vertex_array(None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
