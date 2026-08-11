@@ -59,9 +59,13 @@ pub struct App<'a> {
     // (but not our own RedrawRequested), consumed at the top of `new_events`.
     xev_pending: bool,
 
-    pub(crate) term: Term,
-    ttyfd: i32,
+    pub term: Term,
+
+    // `None` until `spawn_shell` forks the shell.
+    ttyfd: Option<i32>,
     rfd: libc::fd_set,
+    unhandled_events: Vec<WindowEvent>,
+
     last_blink: Instant,
 }
 
@@ -72,9 +76,6 @@ impl<'a> App<'a> {
         display_builder: DisplayBuilder,
     ) -> Self {
         let mut term = term;
-
-        let ttyfd = term.ttynew(None, config::SHELL, None, None);
-        eprintln!("ttyfd: {ttyfd}");
 
         let mut font_registry = FontRegistry::new();
 
@@ -102,9 +103,28 @@ impl<'a> App<'a> {
             xev_pending: false,
 
             term,
-            ttyfd,
+            ttyfd: None,
             rfd: unsafe { std::mem::zeroed() },
+            unhandled_events: Vec::new(),
+
             last_blink: Instant::now(),
+        }
+    }
+
+    /// Forks/execs the shell against the terminal's current grid size,
+    /// and starts polling its fd.
+    fn spawn_shell(&mut self) {
+        let ttyfd = self.term.ttynew(None, config::SHELL, None, None);
+        eprintln!("ttyfd: {ttyfd}");
+        self.ttyfd = Some(ttyfd);
+
+        self.term
+            .state
+            .ttyresize(self.term.win.tw as usize, self.term.win.th as usize);
+
+        // HACK: Requesting a redraw ensures any unhandled events are processed
+        if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
+            window.request_redraw();
         }
     }
 
@@ -115,11 +135,15 @@ impl<'a> App<'a> {
     }
 
     pub fn kpress(&mut self, event: KeyEvent) {
-        if self.term.win.mode.contains(WinMode::KbdLock) {
+        // This check should always pass given that any event received
+        // before the shell is spawned is queued in `unhandled_events`
+        if self.ttyfd.is_none() {
             return;
         }
 
-        // eprintln!("key event: {:?}", event);
+        if self.term.win.mode.contains(WinMode::KbdLock) {
+            return;
+        }
 
         let PhysicalKey::Code(code) = event.physical_key else {
             return;
@@ -222,16 +246,32 @@ impl<'a> App<'a> {
                 size.height as i32,
             ));
 
-            self.quad_renderer
-                .as_ref()
-                .expect("QuadRenderer is not initialized")
-                .clear_section(
-                    0,
-                    0,
-                    size.width as i32,
-                    size.height as i32,
-                    (0.0, 0.0, 0.0, 0.4),
-                );
+            if let Some(AppState {
+                gl_surface,
+                window: _window,
+            }) = self.app_state.as_ref()
+            {
+                let gl_context = self
+                    .gl_handler
+                    .gl_context
+                    .as_ref()
+                    .expect("GL context is not initialized");
+
+                for i in 0..2 {
+                    self.quad_renderer
+                        .as_ref()
+                        .expect("QuadRenderer is not initialized")
+                        .clear_section(
+                            0,
+                            0,
+                            size.width as i32,
+                            size.height as i32,
+                            (0.0, 0.0, 0.0, 0.0),
+                        );
+
+                    gl_surface.swap_buffers(gl_context);
+                }
+            }
 
             self.text_renderer
                 .as_mut()
@@ -518,6 +558,75 @@ impl<'a> App<'a> {
             now + Duration::from_secs_f64(wait_ms / 1e3),
         ));
     }
+
+    fn handle_window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _id: WindowId,
+        event: winit::event::WindowEvent,
+    ) {
+        // Like st's `xev`: any real window event should re-arm the drawing
+        // debounce in `new_events`. RedrawRequested is excluded since we
+        // generate it ourselves after drawing, not an external event.
+        if !matches!(event, WindowEvent::RedrawRequested) {
+            self.xev_pending = true;
+        }
+
+        match event {
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.keyboard_modifiers = modifiers.state();
+                eprintln!("Modifiers changed: {:?}", self.keyboard_modifiers);
+            }
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic: false,
+                ..
+            } => self.kpress(event),
+            WindowEvent::Resized(size) => self.resize(size),
+
+            WindowEvent::RedrawRequested => {
+                let start = Instant::now();
+                if let Some(AppState {
+                    gl_surface,
+                    window: _,
+                }) = &self.app_state
+                {
+                    let gl_context = self
+                        .gl_handler
+                        .gl_context
+                        .as_ref()
+                        .expect("GL context is not initialized");
+
+                    unsafe {
+                        self.quad_renderer
+                            .as_ref()
+                            .expect("QuadRenderer is not initialized")
+                            .render();
+                    }
+                    gl_surface
+                        .swap_buffers(gl_context)
+                        .expect("Failed to swap GL buffers");
+                }
+
+                // let duration = start.elapsed();
+                // eprintln!("Redrawn in {} ms", duration.as_millis());
+            }
+
+            WindowEvent::Focused(focused) => {
+                if focused {
+                    self.focus();
+                } else {
+                    self.unfocus();
+                }
+            }
+
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
+
+            _ => (),
+        }
+    }
 }
 
 impl<'a> ApplicationHandler for App<'a> {
@@ -664,32 +773,41 @@ impl<'a> ApplicationHandler for App<'a> {
             tv_nsec: ((timeout - secs * 1e3) * 1e6) as libc::c_long,
         };
 
-        let ttyin = unsafe {
-            libc::FD_ZERO(&mut self.rfd);
-            libc::FD_SET(self.ttyfd, &mut self.rfd);
+        let ttyin = if let Some(ttyfd) = self.ttyfd {
+            unsafe {
+                libc::FD_ZERO(&mut self.rfd);
+                libc::FD_SET(ttyfd, &mut self.rfd);
 
-            let ready = libc::pselect(
-                self.ttyfd + 1,
-                &mut self.rfd,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                &seltv,
-                std::ptr::null(),
-            );
+                let ready = libc::pselect(
+                    ttyfd + 1,
+                    &mut self.rfd,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &seltv,
+                    std::ptr::null(),
+                );
 
-            if ready < 0 {
-                if *libc::__errno_location() != libc::EINTR {
-                    panic!("pselect failed: {}", std::io::Error::last_os_error());
+                if ready < 0 {
+                    if *libc::__errno_location() != libc::EINTR {
+                        panic!("pselect failed: {}", std::io::Error::last_os_error());
+                    }
+                    // interrupted by a signal: retry immediately, like C's `continue`
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now()));
+                    return;
                 }
-                // interrupted by a signal: retry immediately, like C's `continue`
-                event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now()));
-                return;
-            }
 
-            libc::FD_ISSET(self.ttyfd, &mut self.rfd) || ttyread_pending()
+                libc::FD_ISSET(ttyfd, &mut self.rfd) || ttyread_pending()
+            }
+        } else {
+            // Shell hasn't been spawned yet - nothing to poll.
+            false
         };
 
         let now = Instant::now();
+
+        if self.ttyfd.is_none() && self.app_state.is_some() {
+            self.spawn_shell();
+        }
 
         if ttyin {
             self.term.ttyread();
@@ -765,70 +883,24 @@ impl<'a> ApplicationHandler for App<'a> {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        _id: WindowId,
+        id: WindowId,
         event: winit::event::WindowEvent,
     ) {
-        // Like st's `xev`: any real window event should re-arm the drawing
-        // debounce in `new_events`. RedrawRequested is excluded since we
-        // generate it ourselves after drawing, not an external event.
-        if !matches!(event, WindowEvent::RedrawRequested) {
-            self.xev_pending = true;
+        if self.ttyfd.is_none() {
+            self.unhandled_events.push(event);
+            return;
         }
 
-        match event {
-            WindowEvent::ModifiersChanged(modifiers) => {
-                self.keyboard_modifiers = modifiers.state();
-                eprintln!("Modifiers changed: {:?}", self.keyboard_modifiers);
+        if !self.unhandled_events.is_empty() {
+            let events = std::mem::take(&mut self.unhandled_events);
+
+            for event in events {
+                println!("Processing unhandled event: {:?}", event);
+                // self.handle_window_event(event_loop, id, event);
             }
-            WindowEvent::KeyboardInput {
-                event,
-                is_synthetic: false,
-                ..
-            } => self.kpress(event),
-            WindowEvent::Resized(size) => self.resize(size),
-
-            WindowEvent::RedrawRequested => {
-                let start = Instant::now();
-                if let Some(AppState {
-                    gl_surface,
-                    window: _,
-                }) = &self.app_state
-                {
-                    let gl_context = self
-                        .gl_handler
-                        .gl_context
-                        .as_ref()
-                        .expect("GL context is not initialized");
-
-                    unsafe {
-                        self.quad_renderer
-                            .as_ref()
-                            .expect("QuadRenderer is not initialized")
-                            .render();
-                    }
-                    gl_surface
-                        .swap_buffers(gl_context)
-                        .expect("Failed to swap GL buffers");
-                }
-
-                // let duration = start.elapsed();
-                // eprintln!("Redrawn in {} ms", duration.as_millis());
-            }
-
-            WindowEvent::Focused(focused) => {
-                if focused {
-                    self.focus();
-                } else {
-                    self.unfocus();
-                }
-            }
-
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
-
-            _ => (),
         }
+
+        self.handle_window_event(event_loop, id, event);
     }
 }
 

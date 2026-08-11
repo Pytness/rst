@@ -11,7 +11,10 @@ use crate::utils::{is_control, utf8decode};
 use crate::win::WinMode;
 
 pub static mut IOFD: i32 = 1;
-pub static mut CMDFD: i32 = 0;
+// -1 until `Term::ttynew` forks the shell and assigns the real pty fd; guards
+// against writing to fd 0 (this process's own stdin) if something tries to
+// notify the pty (e.g. a focus event) before the shell exists.
+pub static mut CMDFD: i32 = -1;
 pub static mut PID: i32 = 0;
 pub static mut SU: usize = 0;
 pub static mut TWRITE_ABORTED: bool = false;
