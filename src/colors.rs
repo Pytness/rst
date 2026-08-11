@@ -1,6 +1,6 @@
-use crate::BETWEEN;
 use crate::config::DEFAULTBG;
 use crate::terminal::IS_TRUECOL;
+use crate::{BETWEEN, config};
 
 pub const COLORS: [u32; 512] = {
     let mut arr = [0; 512];
@@ -173,7 +173,13 @@ impl ColorRegistry {
         if IS_TRUECOL(color) {
             Color::from_true_color(color)
         } else {
-            self.colors.get(color as usize).cloned().unwrap_or_default()
+            let mut c = self.colors.get(color as usize).cloned().unwrap_or_default();
+
+            if color == DEFAULTBG {
+                c.alpha = (255.0 * config::BACKGROUND_ALPHA) as u8;
+            }
+
+            c
         }
     }
 }

@@ -62,6 +62,7 @@ pub const DEFAULTRCS: u32 = 257;
 pub const SHELL: Option<&CStr> = Some(c"/bin/zsh");
 pub const TERM: &CStr = c"xterm-256color";
 pub const BORDERPX: u32 = 4;
+pub const BACKGROUND_ALPHA: f32 = 0.8;
 
 pub const BLINK_TIMEOUT: u64 = 500;
 
