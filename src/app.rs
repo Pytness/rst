@@ -153,11 +153,9 @@ impl<'a> App<'a> {
         if code == KeyCode::ControlLeft {
             match event.state {
                 ElementState::Pressed => {
-                    eprintln!("Control held");
                     // highlighturls();
                 }
                 ElementState::Released => {
-                    eprintln!("Control released");
                     // unhighlighturls();
                 }
             }
@@ -583,7 +581,6 @@ impl<'a> App<'a> {
         match event {
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.keyboard_modifiers = modifiers.state();
-                eprintln!("Modifiers changed: {:?}", self.keyboard_modifiers);
             }
             WindowEvent::KeyboardInput {
                 event,

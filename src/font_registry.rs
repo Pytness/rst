@@ -1,4 +1,7 @@
+use fontconfig::CharSet;
+use fontconfig::FC_FAMILY;
 use fontconfig::FC_MATRIX;
+use fontconfig::FC_SCALABLE;
 use fontconfig::FC_SIZE;
 use fontconfig::FC_SLANT;
 use fontconfig::FC_SLANT_ITALIC;
@@ -6,12 +9,18 @@ use fontconfig::FC_WEIGHT;
 use fontconfig::FC_WEIGHT_BOLD;
 use fontconfig::Fontconfig;
 use fontconfig::Pattern;
+use fontconfig_sys::FcFontSet;
 use fontconfig_sys::FcMatrix;
 use fontconfig_sys::FcPattern;
+use fontconfig_sys::FcResultNoMatch;
 use fontconfig_sys::statics::LIB;
+use freetype::face::StyleFlag;
 use freetype::ffi::FT_Matrix;
 use freetype::ffi::FT_Vector;
+use std::cell::Ref;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem::ManuallyDrop;
@@ -90,9 +99,20 @@ impl FontEntry {
     }
 }
 
+type FallbackKey = (Option<String>, bool, bool);
+
 pub struct FontRegistry {
-    fonts: Vec<FontEntry>,
+    fonts: RefCell<Vec<FontEntry>>,
     shape_buffer: RefCell<Option<UnicodeBuffer>>,
+    char_size: RefCell<Option<(isize, u32)>>,
+    /// (family, italic, bold) + character combinations Fontconfig has confirmed no
+    /// installed font covers, so `register_by_charcode` doesn't repeat the search.
+    no_coverage: RefCell<HashSet<(FallbackKey, char)>>,
+    /// `FcFontSort` result per (family, italic, bold), reused across every
+    /// single-character fallback lookup for that style (mirrors st's `Font.set`
+    /// cache in x.c). Never freed: it lives for the process's lifetime, same as
+    /// the registered fonts themselves.
+    fallback_sets: RefCell<HashMap<FallbackKey, *mut FcFontSet>>,
 }
 
 pub struct FontFace {
@@ -163,6 +183,32 @@ fn delpattern(pattern: &mut Pattern, object: &CStr) {
     }
 }
 
+/// Reads the `FC_MATRIX` fontconfig set on a matched pattern (e.g. a synthetic
+/// oblique shear substituted for a missing italic face), defaulting to identity.
+fn pattern_matrix(pattern: &Pattern) -> FcMatrix {
+    let mut matrix: *mut FcMatrix = std::ptr::null_mut();
+    // fn FcPatternGetMatrix( *mut FcPattern, *const c_char, c_int, *mut *mut FcMatrix) -> FcResult,
+    unsafe {
+        (LIB.FcPatternGetMatrix)(
+            pattern.as_ptr() as *mut FcPattern,
+            FC_MATRIX.as_ptr() as *const i8,
+            0,
+            &mut matrix as *mut *mut FcMatrix,
+        )
+    };
+
+    if matrix.is_null() {
+        FcMatrix {
+            xx: 1.0,
+            xy: 0.0,
+            yx: 0.0,
+            yy: 1.0,
+        }
+    } else {
+        unsafe { *matrix }
+    }
+}
+
 fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
     let mut pattern = pattern.clone();
     let slant = pattern.get_int(FC_SLANT);
@@ -182,27 +228,7 @@ fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
         name, slant, weight, match_slant, match_weight, face_index, filename
     );
 
-    let mut matrix: *mut FcMatrix = std::ptr::null_mut();
-    // fn FcPatternGetMatrix( *mut FcPattern, *const c_char, c_int, *mut *mut FcMatrix) -> FcResult,
-    unsafe {
-        (LIB.FcPatternGetMatrix)(
-            fmatch.as_ptr() as *mut FcPattern,
-            FC_MATRIX.as_ptr() as *const i8,
-            0,
-            &mut matrix as *mut *mut FcMatrix,
-        )
-    };
-
-    let matrix: FcMatrix = if matrix.is_null() {
-        FcMatrix {
-            xx: 1.0,
-            xy: 0.0,
-            yx: 0.0,
-            yy: 1.0,
-        }
-    } else {
-        unsafe { *matrix }
-    };
+    let matrix = pattern_matrix(&fmatch);
 
     eprintln!(
         "Font matrix: xx={:?}\n, xy={:?}\n, yx={:?}\n, yy={:?}",
@@ -229,8 +255,11 @@ fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
 impl FontRegistry {
     pub fn new() -> Self {
         FontRegistry {
-            fonts: Vec::new(),
+            fonts: RefCell::new(Vec::new()),
             shape_buffer: RefCell::new(Some(UnicodeBuffer::new())),
+            char_size: RefCell::new(None),
+            no_coverage: RefCell::new(HashSet::new()),
+            fallback_sets: RefCell::new(HashMap::new()),
         }
     }
 
@@ -246,7 +275,7 @@ impl FontRegistry {
             )
         };
 
-        pattern.add_integer(FC_SIZE, 10);
+        // pattern.add_integer(FC_SIZE, 10);
         let regular = match_pattern(&pattern);
 
         pattern.add_integer(FC_SLANT, FC_SLANT_ITALIC);
@@ -269,7 +298,7 @@ impl FontRegistry {
             return;
         }
 
-        self.fonts.push(FontEntry {
+        self.fonts.get_mut().push(FontEntry {
             name: name.to_string(),
             regular: regular
                 .map(|path| FontFace::new(path))
@@ -280,8 +309,161 @@ impl FontRegistry {
         });
     }
 
-    pub fn get_fonts(&self) -> &[FontEntry] {
-        &self.fonts
+    /// Builds the Fontconfig pattern used as the search anchor for a fallback
+    /// lookup: same family/slant/weight as the face we failed to find a glyph in.
+    fn fallback_base_pattern<'fc>(
+        fontconfig: &'fc Fontconfig,
+        (family, italic, bold): &FallbackKey,
+    ) -> Option<Pattern<'fc>> {
+        let family = CString::new(family.as_deref()?).ok()?;
+
+        let mut pattern = Pattern::new(fontconfig);
+        pattern.add_string(FC_FAMILY, &family);
+
+        if *italic {
+            pattern.add_integer(FC_SLANT, FC_SLANT_ITALIC);
+        }
+        if *bold {
+            pattern.add_integer(FC_WEIGHT, FC_WEIGHT_BOLD);
+        }
+
+        Some(pattern)
+    }
+
+    /// Returns the (cached) `FcFontSort` result closest to `key` - fonts ranked by
+    /// similarity to the face that was missing a glyph, i.e. the same search space
+    /// st builds once per `Font` (`font->set` in x.c) and reuses for every
+    /// single-character fallback lookup in that style.
+    fn sorted_fallback_set(&self, key: &FallbackKey, base_pattern: &Pattern) -> *mut FcFontSet {
+        if let Some(set) = self.fallback_sets.borrow().get(key) {
+            return *set;
+        }
+
+        let mut pattern = base_pattern.clone();
+        pattern.config_substitute();
+        pattern.default_substitute();
+
+        let mut result = FcResultNoMatch;
+        let set = unsafe {
+            (LIB.FcFontSort)(
+                std::ptr::null_mut(),
+                pattern.as_mut_ptr(),
+                1, // trim: drop fonts whose coverage is a subset of an earlier one
+                std::ptr::null_mut(),
+                &mut result,
+            )
+        };
+
+        self.fallback_sets.borrow_mut().insert(key.clone(), set);
+        set
+    }
+
+    /// Finds and loads a system font covering `char_code`, the same way st's
+    /// `xmakeglyphfontspecs` does on a shaping miss (x.c): sort installed fonts by
+    /// closeness to the face used for `style` once per (family, italic, bold), then
+    /// match that sorted set against a pattern constrained to just this character.
+    /// The result is appended to the registry, so later lookups - for this
+    /// character and any other the new font happens to cover - are satisfied by
+    /// the plain scan at the top of `get_char_index` without asking Fontconfig
+    /// again. Characters no font covers are remembered too, so a glyph with no
+    /// coverage anywhere doesn't re-trigger this search every time it's drawn.
+    pub fn register_by_charcode(&self, char_code: char, style: FontStyle) -> Option<(usize, u32)> {
+        let key: FallbackKey = {
+            let fonts = self.fonts.borrow();
+            let base = fonts.first()?.style(style);
+            let flags = base.ft_face.style_flags();
+            (
+                base.ft_face.family_name(),
+                flags.contains(StyleFlag::ITALIC),
+                flags.contains(StyleFlag::BOLD),
+            )
+        };
+
+        if self
+            .no_coverage
+            .borrow()
+            .contains(&(key.clone(), char_code))
+        {
+            return None;
+        }
+
+        let fontconfig = Fontconfig::new()?;
+        let base_pattern = Self::fallback_base_pattern(&fontconfig, &key)?;
+        let sorted_set = self.sorted_fallback_set(&key, &base_pattern);
+
+        let mut char_pattern = base_pattern.clone();
+        let mut charset = CharSet::new(&fontconfig);
+        charset.add_char(char_code);
+        char_pattern.add_charset(charset);
+        unsafe {
+            (LIB.FcPatternAddBool)(
+                char_pattern.as_mut_ptr(),
+                FC_SCALABLE.as_ptr() as *const i8,
+                1,
+            );
+        }
+        char_pattern.config_substitute();
+        char_pattern.default_substitute();
+
+        let mut sets = [sorted_set];
+        let mut result = FcResultNoMatch;
+        let matched_ptr = unsafe {
+            (LIB.FcFontSetMatch)(
+                std::ptr::null_mut(),
+                sets.as_mut_ptr(),
+                sets.len() as i32,
+                char_pattern.as_mut_ptr(),
+                &mut result,
+            )
+        };
+
+        if matched_ptr.is_null() {
+            self.no_coverage.borrow_mut().insert((key, char_code));
+            return None;
+        }
+
+        let matched = unsafe { Pattern::from_pattern(&fontconfig, matched_ptr) };
+        let Some(filename) = matched.filename().map(str::to_string) else {
+            return None;
+        };
+        let name = matched.name().unwrap_or(&filename).to_string();
+        let matrix = pattern_matrix(&matched);
+
+        let face = FontFace::new((filename.clone(), matrix));
+        if let Some((char_size, dpi)) = *self.char_size.borrow() {
+            self.apply_char_size(&face, char_size, dpi);
+        }
+
+        let glyph_id = face.ft_face.get_char_index(char_code as usize).unwrap_or(0);
+
+        eprintln!(
+            "Fallback lookup for U+{:04X}: matched '{}' ({}), glyph_id={}",
+            char_code as u32, name, filename, glyph_id
+        );
+
+        let font_index = {
+            let mut fonts = self.fonts.borrow_mut();
+            let font_index = fonts.len();
+            fonts.push(FontEntry {
+                name,
+                regular: face,
+                italic: None,
+                bold: None,
+                italic_bold: None,
+            });
+            font_index
+        };
+
+        if glyph_id == 0 {
+            self.no_coverage.borrow_mut().insert((key, char_code));
+            return None;
+        }
+
+        Some((font_index, glyph_id))
+    }
+
+    pub fn get_fonts(&self) -> Ref<'_, Vec<FontEntry>> {
+        self.fonts.borrow()
     }
 
     /// Find and set best matching fixed size for the given pixel size.
@@ -328,52 +510,62 @@ impl FontRegistry {
             .expect("failed to select color size");
     }
 
-    /// Sets the character size for all registered fonts.
+    /// Sets the character size for all registered fonts, including any fallback
+    /// fonts discovered later via `register_by_charcode`.
     pub fn set_char_size(&self, char_size: isize, dpi: Option<u32>) {
         let char_size = char_size * 64;
         let dpi = dpi.unwrap_or(DEFAULT_DPI);
+        *self.char_size.borrow_mut() = Some((char_size, dpi));
 
-        for font in &self.fonts {
+        for font in self.fonts.borrow().iter() {
             for style in font.styles().iter() {
-                eprintln!(
-                    "Setting char size for font '{}': char_size={}, dpi={}",
-                    style.ft_face.family_name().unwrap_or("unknown".to_string()),
-                    char_size,
-                    dpi
-                );
-
-                if !style.ft_face.has_color() {
-                    style
-                        .ft_face
-                        .set_char_size(0, char_size, dpi, dpi)
-                        .expect("failed to set char size");
-                } else {
-                    self.set_color_size(&style.ft_face, char_size);
-                    eprintln!(
-                        "Skipping char size setting for font '{}' because it has color glyphs",
-                        style.ft_face.family_name().unwrap_or("unknown".to_string())
-                    );
-                }
+                self.apply_char_size(style, char_size, dpi);
             }
         }
     }
 
-    /// Looks up `char_code` in the face used for rendering `style`.
-    pub fn get_char_index(&self, char_code: char, style: FontStyle) -> Option<(usize, u32)> {
-        for (font_index, entry) in self.fonts.iter().enumerate() {
-            let glyph_id = entry
-                .style(style)
-                .ft_face
-                .get_char_index(char_code as usize);
+    fn apply_char_size(&self, face: &FontFace, char_size: isize, dpi: u32) {
+        eprintln!(
+            "Setting char size for font '{}': char_size={}, dpi={}",
+            face.ft_face.family_name().unwrap_or("unknown".to_string()),
+            char_size,
+            dpi
+        );
 
-            if let Some(glyph_id) = glyph_id {
-                if glyph_id != 0 {
-                    return Some((font_index, glyph_id));
+        if !face.ft_face.has_color() {
+            face.ft_face
+                .set_char_size(0, char_size, dpi, dpi)
+                .expect("failed to set char size");
+        } else {
+            self.set_color_size(&face.ft_face, char_size);
+            eprintln!(
+                "Skipping char size setting for font '{}' because it has color glyphs",
+                face.ft_face.family_name().unwrap_or("unknown".to_string())
+            );
+        }
+    }
+
+    /// Looks up `char_code` in the face used for rendering `style`, expanding the
+    /// font list via `register_by_charcode` when no registered font - static or
+    /// previously-discovered fallback - covers it.
+    pub fn get_char_index(&self, char_code: char, style: FontStyle) -> Option<(usize, u32)> {
+        {
+            let fonts = self.fonts.borrow();
+            for (font_index, entry) in fonts.iter().enumerate() {
+                let glyph_id = entry
+                    .style(style)
+                    .ft_face
+                    .get_char_index(char_code as usize);
+
+                if let Some(glyph_id) = glyph_id {
+                    if glyph_id != 0 {
+                        return Some((font_index, glyph_id));
+                    }
                 }
             }
         }
 
-        None
+        self.register_by_charcode(char_code, style)
     }
 
     /// Shapes `chars` against the face used for rendering `style`.
@@ -387,8 +579,13 @@ impl FontRegistry {
         let text: String = chars.iter().collect();
         buffer.push_str(&text);
 
-        let font = self.fonts.first().expect("no fonts registered");
-        let shaped = rustybuzz::shape(&font.style(style).rb_face, &[], buffer);
+        // Scoped so the borrow is released before `get_char_index` below, which may
+        // need to mutably borrow `self.fonts` to register a fallback font.
+        let shaped = {
+            let fonts = self.fonts.borrow();
+            let font = fonts.first().expect("no fonts registered");
+            rustybuzz::shape(&font.style(style).rb_face, &[], buffer)
+        };
 
         let infos = shaped.glyph_infos();
         let positions = shaped.glyph_positions();
@@ -420,7 +617,8 @@ impl FontRegistry {
     }
 
     pub fn size_metrics(&self) -> Option<freetype::ffi::FT_Size_Metrics> {
-        let font = self.fonts.first()?;
+        let fonts = self.fonts.borrow();
+        let font = fonts.first()?;
 
         font.regular().ft_face.size_metrics()
     }

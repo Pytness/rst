@@ -335,7 +335,8 @@ impl<'a> TextRenderer<'a> {
         glyph: &ShapedGlyph,
         style: FontStyle,
     ) -> Option<GlyphTexture> {
-        let font = self.font_registry.get_fonts()[glyph.font_index].style(style);
+        let fonts = self.font_registry.get_fonts();
+        let font = fonts[glyph.font_index].style(style);
         let ft_face = &font.ft_face;
         let matrix = font.matrix;
         // style.set_transform();
