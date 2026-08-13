@@ -33,8 +33,8 @@ bitflags! {
 }
 
 #[rustfmt::skip]
-#[derive(Default, Debug)]
-enum CursorStyle {
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum CursorStyle {
 
     BlinkingBlock =        0, // blinking block
     #[default]
@@ -44,6 +44,23 @@ enum CursorStyle {
     SteadyUnderline      = 4, // steady underline ("_")
     BlinkingBar          = 5, // blinking bar
     SteadyBar            = 6, // steady bar ("|")
+}
+
+impl TryFrom<i32> for CursorStyle {
+    type Error = ();
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(CursorStyle::BlinkingBlock),
+            1 => Ok(CursorStyle::BlinkingBlockDefault),
+            2 => Ok(CursorStyle::SteadyBlock),
+            3 => Ok(CursorStyle::BlinkingUnderline),
+            4 => Ok(CursorStyle::SteadyUnderline),
+            5 => Ok(CursorStyle::BlinkingBar),
+            6 => Ok(CursorStyle::SteadyBar),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Default, Debug)]
@@ -58,4 +75,12 @@ pub struct TermWindow {
     pub cw: u32,             // char width
     pub mode: WinMode,       // window state/mode flags
     pub cursor: CursorStyle, // cursor style
+}
+
+impl TermWindow {
+    pub fn set_cursor(&mut self, cursor: i32) {
+        if let Ok(cursor_style) = CursorStyle::try_from(cursor) {
+            self.cursor = cursor_style;
+        };
+    }
 }

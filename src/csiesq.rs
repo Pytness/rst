@@ -423,7 +423,7 @@ impl CSIEscape {
                     // DECSCUSR -- Set Cursor Style
                     b'q' => {
                         // TODO: implement this
-                        // let r = xsetcursor(self.arg[0]);
+                        let r = win.set_cursor(self.arg[0]);
                         // if r != 0 {
                         //     unknown();
                         // }
