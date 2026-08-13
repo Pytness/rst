@@ -339,7 +339,6 @@ impl<'a> TextRenderer<'a> {
         let font = fonts[glyph.font_index].style(style);
         let ft_face = &font.ft_face;
         let matrix = font.matrix;
-        // style.set_transform();
 
         let load_glyph_result = ft_face.load_glyph(
             glyph.glyph_id,

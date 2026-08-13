@@ -146,27 +146,6 @@ impl FontFace {
     pub fn units_per_em(&self) -> i32 {
         self.rb_face.units_per_em()
     }
-
-    pub fn set_transform(&self) {
-        let matrix = self.matrix;
-        let mut matrix = FT_Matrix {
-            xx: (matrix.xx * 0x10000 as f64) as i64,
-            xy: (matrix.xy * 0x10000 as f64) as i64,
-            yx: (matrix.yx * 0x10000 as f64) as i64,
-            yy: (matrix.yy * 0x10000 as f64) as i64,
-        };
-
-        let mut vector = FT_Vector { x: 0, y: 0 };
-        eprintln!(
-            "Setting transform for font '{}': matrix xx={:?}, xy={:?}, yx={:?}, yy={:?}",
-            self.ft_face.family_name().unwrap_or("unknown".to_string()),
-            matrix.xx,
-            matrix.xy,
-            matrix.yx,
-            matrix.yy
-        );
-        self.ft_face.set_transform(&mut matrix, &mut vector);
-    }
 }
 
 impl Drop for FontFace {
