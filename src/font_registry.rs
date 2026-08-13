@@ -202,25 +202,7 @@ fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
     let face_index = fmatch.face_index();
     let filename = fmatch.filename().unwrap_or("unknown");
 
-    eprintln!(
-        "Matched font: '{}', requested slant={:?}, weight={:?}, got slant={:?}, weight={:?}, face_index={:?}, filename='{}'",
-        name, slant, weight, match_slant, match_weight, face_index, filename
-    );
-
     let matrix = pattern_matrix(&fmatch);
-
-    eprintln!(
-        "Font matrix: xx={:?}\n, xy={:?}\n, yx={:?}\n, yy={:?}",
-        matrix.xx, matrix.xy, matrix.yx, matrix.yy
-    );
-
-    // if slant.is_some() && match_slant != slant {
-    //     return None;
-    // }
-    //
-    // if weight.is_some() && match_weight != weight {
-    //     return None;
-    // }
 
     Some((
         fmatch
@@ -415,11 +397,6 @@ impl FontRegistry {
 
         let glyph_id = face.ft_face.get_char_index(char_code as usize).unwrap_or(0);
 
-        eprintln!(
-            "Fallback lookup for U+{:04X}: matched '{}' ({}), glyph_id={}",
-            char_code as u32, name, filename, glyph_id
-        );
-
         let font_index = {
             let mut fonts = self.fonts.borrow_mut();
             let font_index = fonts.len();
@@ -451,19 +428,8 @@ impl FontRegistry {
         let num = (*raw).num_fixed_sizes;
 
         if num == 0 {
-            eprintln!(
-                "Font '{}' does not have fixed sizes, skipping color size setting",
-                ft_face.family_name().unwrap_or("unknown".to_string())
-            );
             return;
         }
-
-        eprintln!(
-            "Font '{}' has {} fixed sizes, selecting best match for pixel size {}",
-            ft_face.family_name().unwrap_or("unknown".to_string()),
-            num,
-            pixel_size
-        );
 
         let availables_sizes =
             unsafe { std::slice::from_raw_parts((*raw).available_sizes, num as usize) };
@@ -472,10 +438,6 @@ impl FontRegistry {
         let mut best_match_index = 0;
 
         for (i, size) in availables_sizes.iter().enumerate() {
-            eprintln!(
-                "Available size {}: width={}, height={}, pixel_size={}",
-                i, size.width, size.height, size.y_ppem
-            );
             let diff = (pixel_size - size.width as isize).abs();
 
             if diff < best_diff {
@@ -504,23 +466,12 @@ impl FontRegistry {
     }
 
     fn apply_char_size(&self, face: &FontFace, char_size: isize, dpi: u32) {
-        eprintln!(
-            "Setting char size for font '{}': char_size={}, dpi={}",
-            face.ft_face.family_name().unwrap_or("unknown".to_string()),
-            char_size,
-            dpi
-        );
-
         if !face.ft_face.has_color() {
             face.ft_face
                 .set_char_size(0, char_size, dpi, dpi)
                 .expect("failed to set char size");
         } else {
             self.set_color_size(&face.ft_face, char_size);
-            eprintln!(
-                "Skipping char size setting for font '{}' because it has color glyphs",
-                face.ft_face.family_name().unwrap_or("unknown".to_string())
-            );
         }
     }
 
