@@ -33,7 +33,7 @@ pub const COLORS: [u32; 512] = {
     arr
 };
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Color {
     pub red: u8,
     pub green: u8,
@@ -60,6 +60,15 @@ impl Color {
             blue: b,
             alpha: a,
         }
+    }
+
+    pub fn as_f32(&self) -> [f32; 4] {
+        [
+            self.red as f32 / 255.0,
+            self.green as f32 / 255.0,
+            self.blue as f32 / 255.0,
+            self.alpha as f32 / 255.0,
+        ]
     }
 
     pub fn from_true_color(color: u32) -> Self {
