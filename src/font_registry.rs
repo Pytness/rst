@@ -2,7 +2,6 @@ use fontconfig::CharSet;
 use fontconfig::FC_FAMILY;
 use fontconfig::FC_MATRIX;
 use fontconfig::FC_SCALABLE;
-use fontconfig::FC_SIZE;
 use fontconfig::FC_SLANT;
 use fontconfig::FC_SLANT_ITALIC;
 use fontconfig::FC_WEIGHT;
@@ -15,13 +14,10 @@ use fontconfig_sys::FcPattern;
 use fontconfig_sys::FcResultNoMatch;
 use fontconfig_sys::statics::LIB;
 use freetype::face::StyleFlag;
-use freetype::ffi::FT_Matrix;
-use freetype::ffi::FT_Vector;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem::ManuallyDrop;
 use std::sync::LazyLock;
@@ -51,7 +47,6 @@ pub enum FontStyle {
 }
 
 pub struct FontEntry {
-    pub name: String,
     // Regular is required
     pub regular: FontFace,
     pub italic: Option<FontFace>,
@@ -60,6 +55,20 @@ pub struct FontEntry {
 }
 
 impl FontEntry {
+    fn new(
+        regular: FontFace,
+        italic: Option<FontFace>,
+        bold: Option<FontFace>,
+        italic_bold: Option<FontFace>,
+    ) -> Self {
+        Self {
+            regular,
+            italic,
+            bold,
+            italic_bold,
+        }
+    }
+
     pub fn regular(&self) -> &FontFace {
         &self.regular
     }
@@ -156,12 +165,6 @@ impl Drop for FontFace {
     }
 }
 
-fn delpattern(pattern: &mut Pattern, object: &CStr) {
-    unsafe {
-        (LIB.FcPatternDel)(pattern.as_mut_ptr(), object.as_ptr() as *const i8);
-    }
-}
-
 /// Reads the `FC_MATRIX` fontconfig set on a matched pattern (e.g. a synthetic
 /// oblique shear substituted for a missing italic face), defaulting to identity.
 fn pattern_matrix(pattern: &Pattern) -> FcMatrix {
@@ -190,18 +193,7 @@ fn pattern_matrix(pattern: &Pattern) -> FcMatrix {
 
 fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
     let mut pattern = pattern.clone();
-    let slant = pattern.get_int(FC_SLANT);
-    let weight = pattern.get_int(FC_WEIGHT);
-
-    let fmatch = pattern.font_match();
-    let name = fmatch.name().unwrap_or("unknown").to_string();
-
-    let match_slant = fmatch.get_int(FC_SLANT);
-    let match_weight = fmatch.get_int(FC_WEIGHT);
-
-    let face_index = fmatch.face_index();
-    let filename = fmatch.filename().unwrap_or("unknown");
-
+    let fmatch = pattern.font_match().ok()?;
     let matrix = pattern_matrix(&fmatch);
 
     Some((
@@ -229,45 +221,40 @@ impl FontRegistry {
 
         let pattern_ptr = CString::new(name).expect("font name contained a NUL byte");
 
-        let mut pattern = unsafe {
+        let base = unsafe {
             Pattern::from_pattern(
                 &fontconfig,
                 (LIB.FcNameParse)(pattern_ptr.as_ptr() as *const u8) as *mut FcPattern,
             )
         };
 
-        // pattern.add_integer(FC_SIZE, 10);
-        let regular = match_pattern(&pattern);
+        // slant/weight left as `None` are unconstrained, matching whatever
+        // Fontconfig considers closest to `base` rather than a specific style.
+        let styled = |slant: Option<i32>, weight: Option<i32>| {
+            let mut pattern = base.clone();
+            if let Some(slant) = slant {
+                pattern.add_integer(FC_SLANT, slant).ok();
+            }
+            if let Some(weight) = weight {
+                pattern.add_integer(FC_WEIGHT, weight).ok();
+            }
+            match_pattern(&pattern)
+        };
 
-        pattern.add_integer(FC_SLANT, FC_SLANT_ITALIC);
-        let italic = match_pattern(&pattern);
-
-        pattern.add_integer(FC_WEIGHT, FC_WEIGHT_BOLD);
-        let italic_bold = match_pattern(&pattern);
-
-        unsafe {
-            (LIB.FcPatternDel)(pattern.as_mut_ptr(), FC_SLANT.as_ptr() as *const i8);
-        }
-
-        delpattern(&mut pattern, FC_SLANT);
-        pattern.add_integer(FC_SLANT, 0);
-        let bold = match_pattern(&pattern);
-
-        if regular.is_none() {
+        let Some(regular) = styled(None, None) else {
             eprintln!("Warning: failed to find regular style for font '{}'", name);
-
             return;
-        }
+        };
+        let italic = styled(Some(FC_SLANT_ITALIC), None);
+        let bold = styled(Some(0), Some(FC_WEIGHT_BOLD));
+        let italic_bold = styled(Some(FC_SLANT_ITALIC), Some(FC_WEIGHT_BOLD));
 
-        self.fonts.get_mut().push(FontEntry {
-            name: name.to_string(),
-            regular: regular
-                .map(|path| FontFace::new(path))
-                .expect("regular style is required"),
-            italic: italic.map(|path| FontFace::new(path)),
-            bold: bold.map(|path| FontFace::new(path)),
-            italic_bold: italic_bold.map(|path| FontFace::new(path)),
-        });
+        self.fonts.get_mut().push(FontEntry::new(
+            FontFace::new(regular),
+            italic.map(FontFace::new),
+            bold.map(FontFace::new),
+            italic_bold.map(FontFace::new),
+        ));
     }
 
     /// Builds the Fontconfig pattern used as the search anchor for a fallback
@@ -278,14 +265,14 @@ impl FontRegistry {
     ) -> Option<Pattern<'fc>> {
         let family = CString::new(family.as_deref()?).ok()?;
 
-        let mut pattern = Pattern::new(fontconfig);
-        pattern.add_string(FC_FAMILY, &family);
+        let mut pattern = Pattern::new(fontconfig).ok()?;
+        pattern.add_string(FC_FAMILY, &family).ok();
 
         if *italic {
-            pattern.add_integer(FC_SLANT, FC_SLANT_ITALIC);
+            pattern.add_integer(FC_SLANT, FC_SLANT_ITALIC).ok();
         }
         if *bold {
-            pattern.add_integer(FC_WEIGHT, FC_WEIGHT_BOLD);
+            pattern.add_integer(FC_WEIGHT, FC_WEIGHT_BOLD).ok();
         }
 
         Some(pattern)
@@ -301,7 +288,7 @@ impl FontRegistry {
         }
 
         let mut pattern = base_pattern.clone();
-        pattern.config_substitute();
+        pattern.config_substitute().ok();
         pattern.default_substitute();
 
         let mut result = FcResultNoMatch;
@@ -353,9 +340,9 @@ impl FontRegistry {
         let sorted_set = self.sorted_fallback_set(&key, &base_pattern);
 
         let mut char_pattern = base_pattern.clone();
-        let mut charset = CharSet::new(&fontconfig);
-        charset.add_char(char_code);
-        char_pattern.add_charset(charset);
+        let mut charset = CharSet::new(&fontconfig).ok()?;
+        charset.add_char(char_code).ok();
+        char_pattern.add_charset(charset).ok();
         unsafe {
             (LIB.FcPatternAddBool)(
                 char_pattern.as_mut_ptr(),
@@ -363,7 +350,7 @@ impl FontRegistry {
                 1,
             );
         }
-        char_pattern.config_substitute();
+        char_pattern.config_substitute().ok();
         char_pattern.default_substitute();
 
         let mut sets = [sorted_set];
@@ -384,13 +371,12 @@ impl FontRegistry {
         }
 
         let matched = unsafe { Pattern::from_pattern(&fontconfig, matched_ptr) };
-        let Some(filename) = matched.filename().map(str::to_string) else {
+        let Ok(filename) = matched.filename().map(str::to_string) else {
             return None;
         };
-        let name = matched.name().unwrap_or(&filename).to_string();
         let matrix = pattern_matrix(&matched);
 
-        let face = FontFace::new((filename.clone(), matrix));
+        let face = FontFace::new((filename, matrix));
         if let Some((char_size, dpi)) = *self.char_size.borrow() {
             self.apply_char_size(&face, char_size, dpi);
         }
@@ -400,13 +386,7 @@ impl FontRegistry {
         let font_index = {
             let mut fonts = self.fonts.borrow_mut();
             let font_index = fonts.len();
-            fonts.push(FontEntry {
-                name,
-                regular: face,
-                italic: None,
-                bold: None,
-                italic_bold: None,
-            });
+            fonts.push(FontEntry::new(face, None, None, None));
             font_index
         };
 
@@ -459,7 +439,7 @@ impl FontRegistry {
         *self.char_size.borrow_mut() = Some((char_size, dpi));
 
         for font in self.fonts.borrow().iter() {
-            for style in font.styles().iter() {
+            for style in font.styles() {
                 self.apply_char_size(style, char_size, dpi);
             }
         }
