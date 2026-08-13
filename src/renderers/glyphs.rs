@@ -13,7 +13,7 @@ use crate::font_registry::{FontRegistry, FontStyle, ShapedGlyph};
 use crate::macros::macs::include_shader;
 use crate::text_manager::{TermGlyph, TextManager};
 use crate::time_this;
-use crate::win::TermWindow;
+use crate::win::{CursorStyle, TermWindow};
 
 static FT_LIB: LazyLock<Library> =
     LazyLock::new(|| Library::init().expect("failed to initialize FreeType library"));
@@ -680,6 +680,31 @@ impl<'a> TextRenderer<'a> {
             gl.bind_vertex_array(None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
             gl.use_program(None);
+        }
+    }
+
+    pub unsafe fn draw_cursor(
+        &mut self,
+        row: i32,
+        col: i32,
+        color: [f32; 4],
+        cursor_style: CursorStyle,
+        thickness: u32,
+    ) {
+        let cell_box = self.text_manager.get_cell_box(row, col);
+
+        match cursor_style {
+            CursorStyle::BlinkingUnderline | CursorStyle::SteadyUnderline => {
+                let underline_height = thickness as i32;
+                let y = cell_box.y + cell_box.height - underline_height;
+                self.clear_section(cell_box.x, y, cell_box.width, underline_height, color);
+            }
+            CursorStyle::BlinkingBar | CursorStyle::SteadyBar => {
+                let bar_width = thickness as i32;
+                self.clear_section(cell_box.x, cell_box.y, bar_width, cell_box.height, color);
+            }
+
+            _ => {}
         }
     }
 

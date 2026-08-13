@@ -18,7 +18,7 @@ use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
-use crate::colors::COLORS;
+use crate::colors::{COLORS, Color};
 use crate::config::{self, MAXLATENCY, MINLATENCY};
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
@@ -30,7 +30,7 @@ use crate::term_state::SU;
 use crate::terminal::{IS_TRUECOL, TWRITE_ABORTED, Term};
 use crate::text_manager::TermGlyph;
 use crate::time_this;
-use crate::win::WinMode;
+use crate::win::{CursorStyle, WinMode};
 
 pub struct AppState {
     gl_surface: glutin::surface::Surface<glutin::surface::WindowSurface>,
@@ -399,13 +399,13 @@ impl<'a> App<'a> {
         self.drawregion(0, 0, self.term.state.col, self.term.state.row);
 
         let line = self.term.state.line[self.term.state.ocy].clone();
-        let g = &self.term.state.line[self.term.state.c.y][cx].clone();
+        let g = self.term.state.line[self.term.state.c.y][cx];
         let og = &raw mut self.term.state.line[self.term.state.ocy][self.term.state.ocx];
 
         self.xdrawcursor(
             cx as usize,
             self.term.state.c.y as usize,
-            &g,
+            g,
             self.term.state.ocx as usize,
             self.term.state.ocy as usize,
             og,
@@ -449,15 +449,20 @@ impl<'a> App<'a> {
 
     fn xdrawcursor(
         &mut self,
-        _cx: usize,
-        _cy: usize,
-        _g: &Glyph,
+        cx: usize,
+        cy: usize,
+        mut g: Glyph,
         ox: usize,
         oy: usize,
         og: *mut Glyph,
         line: &[Glyph],
         len: usize,
     ) {
+        // CONSTANTLY HAVING TO FIGHT THE BORROW CHECKER
+        let win = unsafe { &*&raw const self.term.win };
+
+        let mut drawcol: Color;
+
         // remove the old cursor
         if self.term.state.selected(ox, oy) {
             unsafe { (*og).mode.toggle(GlyphAttribute::ATTR_REVERSE) };
@@ -467,6 +472,110 @@ impl<'a> App<'a> {
         // It will restore the ligatures broken by the cursor.
 
         self.xdrawline(line, 0, oy, len);
+
+        if win.mode.contains(WinMode::Hide) {
+            return;
+        }
+
+        // NOTE: (from st) If it's an image, just draw a ballot box for simplicity.
+        if g.mode.contains(GlyphAttribute::ATTR_IMAGE) {
+            // g.u = 0x2610 as char;
+        }
+
+        // Select the right color for the right mode.
+        g.mode.insert(
+            GlyphAttribute::ATTR_BOLD
+                | GlyphAttribute::ATTR_ITALIC
+                | GlyphAttribute::ATTR_UNDERLINE
+                | GlyphAttribute::ATTR_STRUCK
+                | GlyphAttribute::ATTR_WIDE
+                | GlyphAttribute::ATTR_BOXDRAW,
+        );
+
+        if win.mode.contains(WinMode::Reverse) {
+            g.mode.insert(GlyphAttribute::ATTR_REVERSE);
+            g.bg = config::DEFAULTBG;
+
+            if self.term.state.selected(cx, cy) {
+                drawcol = self.term.colors.get_from_glyph_color(config::DEFAULTCS);
+                g.fg = config::DEFAULTRCS;
+            } else {
+                drawcol = self.term.colors.get_from_glyph_color(config::DEFAULTRCS);
+                g.fg = config::DEFAULTCS;
+            }
+        } else {
+            if self.term.state.selected(cx, cy) {
+                g.fg = config::DEFAULTFG;
+                g.bg = config::DEFAULTBG;
+            } else if !(unsafe { *og }).mode.contains(GlyphAttribute::ATTR_REVERSE) {
+                if config::DYNAMIC_CURSOR {
+                    std::mem::swap(&mut g.bg, &mut g.fg);
+                } else {
+                    g.fg = config::DEFAULTBG;
+                    g.bg = config::DEFAULTCS;
+                }
+            }
+
+            drawcol = self.term.colors.get_from_glyph_color(g.bg);
+        }
+
+        if win.mode.contains(WinMode::Focused) {
+            let cursor_blinks = match win.cursor {
+                CursorStyle::BlinkingBlock
+                | CursorStyle::BlinkingBlockDefault
+                | CursorStyle::BlinkingUnderline
+                | CursorStyle::BlinkingBar => true,
+                _ => false,
+            };
+
+            let blink_mode = win.mode.contains(WinMode::Blink);
+
+            match win.cursor {
+                CursorStyle::BlinkingBlock
+                | CursorStyle::BlinkingBlockDefault
+                | CursorStyle::SteadyBlock => {
+                    if cursor_blinks && blink_mode {
+                        return;
+                    }
+
+                    let fontspects = self.xdrawglyphfontspecs(&[g]);
+                    unsafe {
+                        self.quad_renderer
+                            .as_ref()
+                            .expect("QuadRenderer is not initialized")
+                            .with(|| {
+                                self.text_renderer
+                                    .as_mut()
+                                    .expect("TextRenderer is not initialized")
+                                    .draw_glyphs(
+                                        fontspects.as_slice(),
+                                        cy as i32,
+                                        cx as i32,
+                                        &ortho(win.w as f32, win.h as f32),
+                                    );
+                            });
+                    }
+                }
+
+                mode => {
+                    if cursor_blinks && blink_mode {
+                        return;
+                    }
+
+                    unsafe {
+                        self.quad_renderer
+                            .as_ref()
+                            .expect("QuadRenderer is not initialized")
+                            .with(|| {
+                                self.text_renderer
+                                    .as_mut()
+                                    .expect("TextRenderer is not initialized")
+                                    .draw_cursor(cy as i32, cx as i32, drawcol.as_f32(), mode, 2);
+                            });
+                    }
+                }
+            }
+        }
     }
 
     fn xfinishdraw(&self) {

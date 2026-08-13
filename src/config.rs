@@ -63,6 +63,7 @@ pub const SHELL: Option<&CStr> = Some(c"/bin/zsh");
 pub const TERM: &CStr = c"xterm-256color";
 pub const BORDERPX: u32 = 4;
 pub const BACKGROUND_ALPHA: f32 = 0.8;
+pub const DYNAMIC_CURSOR: bool = false;
 
 pub const BLINK_TIMEOUT: u64 = 500;
 
