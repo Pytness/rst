@@ -363,7 +363,7 @@ impl<'a> App<'a> {
     pub fn draw(&mut self) {
         let mut cx = self.term.state.c.x;
         let mut ocx = self.term.state.ocx;
-        let mut ocy = self.term.state.c.y;
+        let mut ocy = self.term.state.ocy;
 
         if !self.xstartdraw() {
             return;
