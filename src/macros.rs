@@ -99,9 +99,5 @@ pub(crate) mod macs {
         }};
     }
 
-    macro_rules! include_font {
-        ($name: literal) => {{ include_bytes!(concat!(crate::macros::macs::assets_path!("fonts/"), $name)) }};
-    }
-
-    pub(crate) use {assets_path, include_font, include_shader};
+    pub(crate) use {assets_path, include_shader};
 }
