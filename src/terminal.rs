@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::ptr::null_mut;
 
 use crate::colors::{Color, ColorRegistry};
@@ -823,7 +823,7 @@ impl Term {
         match self.csiescseq.mode[0] {
             // DECDIXEL
             b'q' => {
-                let transparent = self.csiescseq.narg >= 2 && self.csiescseq.arg[1] == 1;
+                let _transparent = self.csiescseq.narg >= 2 && self.csiescseq.arg[1] == 1;
                 let mut r: u8 = 0;
                 let mut g: u8 = 0;
                 let mut b: u8 = 0;
@@ -840,7 +840,7 @@ impl Term {
                     }
                 }
 
-                let bgcolor = Color::rgba(r, g, b, a);
+                let _bgcolor = Color::rgba(r, g, b, a);
 
                 // if (sixel_parser_init(&sixel_st, transparent, (255 << 24), bgcolor, 1, win.cw, win.ch) != 0) {
                 // 	perror("sixel_parser_init() failed");

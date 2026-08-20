@@ -1,5 +1,4 @@
 use bitflags::bitflags;
-use unicode_width::UnicodeWidthChar;
 
 use crate::BETWEEN;
 use crate::boxdraw::boxdraw::isboxdraw;

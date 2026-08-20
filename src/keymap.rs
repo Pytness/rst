@@ -1,6 +1,5 @@
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 
-use winit::event::{KeyEvent, Modifiers};
 use winit::keyboard::{KeyCode, ModifiersState};
 
 // typedef struct {

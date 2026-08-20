@@ -169,9 +169,7 @@ impl StrEscape {
                             OSC_TABLE[j as usize].str, p_str
                         );
                     } else {
-                        unsafe {
-                            (*term_ptr).state.tfulldirt();
-                        }
+                        state.tfulldirt();
                     }
 
                     return;
@@ -216,9 +214,7 @@ impl StrEscape {
                         eprintln!("erresc: invalid color j={}, p={:?}", j, p_str);
                     } else {
                         // TODO: if defaulbg color is changed, borders are dirty
-                        unsafe {
-                            (*term_ptr).state.tfulldirt();
-                        }
+                        state.tfulldirt();
                     }
 
                     return;
@@ -238,7 +234,7 @@ impl StrEscape {
 
             // DCS -- Device Control String
             b'P' => {
-                let term_mode = unsafe { &mut (*term_ptr).state.mode };
+                let term_mode = &mut state.mode;
 
                 if term_mode.contains(TermMode::Sixel) {
                     term_mode.remove(TermMode::Sixel);

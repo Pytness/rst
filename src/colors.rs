@@ -90,7 +90,7 @@ pub struct ColorRegistry {
 impl ColorRegistry {
     pub fn load_colors(&mut self) {
         if self.loaded {
-            for color in self.colors.iter() {
+            for _color in self.colors.iter() {
                 // XftColorFree(xw.dpy, xw.vis, xw.cmap, cp);
             }
         } else {
@@ -114,7 +114,7 @@ impl ColorRegistry {
     }
 
     pub fn load_color(&mut self, i: usize, name: Option<&str>) -> Option<Color> {
-        let mut name = name;
+        let name = name;
         let mut color = Color::default();
 
         // if let Some(name) = name {

@@ -18,18 +18,16 @@ use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::WindowId;
 
-use crate::colors::{COLORS, Color};
+use crate::colors::Color;
 use crate::config::{self, MAXLATENCY, MINLATENCY};
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::keymap::kmap;
-use crate::macros::macs::include_font;
 use crate::renderers::{self, TextRenderer};
 use crate::term_state::SU;
-use crate::terminal::{IS_TRUECOL, TWRITE_ABORTED, Term};
+use crate::terminal::{TWRITE_ABORTED, Term};
 use crate::text_manager::TermGlyph;
-use crate::time_this;
 use crate::win::{CursorStyle, WinMode};
 
 pub struct AppState {
@@ -254,7 +252,7 @@ impl<'a> App<'a> {
                     .as_ref()
                     .expect("GL context is not initialized");
 
-                for i in 0..2 {
+                for _i in 0..2 {
                     self.quad_renderer
                         .as_ref()
                         .expect("QuadRenderer is not initialized")
@@ -461,7 +459,7 @@ impl<'a> App<'a> {
         // CONSTANTLY HAVING TO FIGHT THE BORROW CHECKER
         let win = unsafe { &*&raw const self.term.win };
 
-        let mut drawcol: Color;
+        let drawcol: Color;
 
         // remove the old cursor
         if self.term.state.selected(ox, oy) {
@@ -699,7 +697,6 @@ impl<'a> App<'a> {
             WindowEvent::Resized(size) => self.resize(size),
 
             WindowEvent::RedrawRequested => {
-                let start = Instant::now();
                 if let Some(AppState {
                     gl_surface,
                     window: _,
@@ -721,9 +718,6 @@ impl<'a> App<'a> {
                         .swap_buffers(gl_context)
                         .expect("Failed to swap GL buffers");
                 }
-
-                // let duration = start.elapsed();
-                // eprintln!("Redrawn in {} ms", duration.as_millis());
             }
 
             WindowEvent::Focused(focused) => {
