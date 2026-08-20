@@ -3,7 +3,6 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use bitflags::Flags;
 use glow::HasContext;
 use glutin::config::ConfigTemplateBuilder;
 use glutin::display::GetGlDisplay;

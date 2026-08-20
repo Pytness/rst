@@ -282,17 +282,15 @@ impl TermState {
             0
         };
 
-        unsafe {
-            match mode {
-                CursorMovement::CursorSave => {
-                    self.stored_cursors[alt] = self.c;
-                }
-                CursorMovement::CursorLoad => {
-                    let c = self.stored_cursors[alt];
+        match mode {
+            CursorMovement::CursorSave => {
+                self.stored_cursors[alt] = self.c;
+            }
+            CursorMovement::CursorLoad => {
+                let c = self.stored_cursors[alt];
 
-                    self.c = c;
-                    self.tmoveto(c.x, c.y);
-                }
+                self.c = c;
+                self.tmoveto(c.x, c.y);
             }
         }
     }

@@ -70,5 +70,3 @@ fn main() {
         std::process::exit(child_exit_code);
     }
 }
-
-fn xinit(_cols: usize, _rows: usize) {}

@@ -20,7 +20,6 @@ pub struct GlHandler {
     template: ConfigTemplateBuilder,
     pub gl_display: GlDisplayCreationState,
     pub gl_context: Option<PossiblyCurrentContext>,
-    pub gl: Option<glow::Context>,
 }
 
 impl GlHandler {
@@ -29,7 +28,6 @@ impl GlHandler {
             template,
             gl_display: GlDisplayCreationState::Builder(Box::new(display_builder)),
             gl_context: None,
-            gl: None,
         }
     }
 

@@ -23,9 +23,9 @@ pub fn tsetdecorstyle(g: &mut Glyph, style: u32) {
 
 pub fn tdefcolor(attr: &[i32], npar: &mut usize, l: usize) -> i32 {
     let mut idx = -1;
-    let mut r = 0;
-    let mut g = 0;
-    let mut b = 0;
+    let r;
+    let g;
+    let b;
 
     match attr[*npar + 1] {
             // direct color in RGB space

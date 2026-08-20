@@ -1,21 +1,6 @@
-use bitflags::bitflags;
-
 use crate::colors::Color;
 use crate::font_registry::FontStyle;
 use crate::win::TermWindow;
-
-bitflags! {
-    pub struct TermGlyphMode: u8 {
-        const Normal = 0;
-        // const Bold = 1 << 0;
-        // const Italic = 1 << 1;
-        // const Underline = 1 << 2;
-        // const Blink = 1 << 3;
-        // const Inverse = 1 << 4;
-        // const Invisible = 1 << 5;
-    }
-}
-pub enum TermGlyphDecoration {}
 
 #[derive(Clone, Copy)]
 pub struct TermGlyph {
@@ -23,8 +8,6 @@ pub struct TermGlyph {
     pub fg_color: Color,
     pub bg_color: Color,
     pub font_style: FontStyle,
-    // pub mode: TermGlyphMode,
-    // pub decoration: TermGlyphDecoration,
 }
 
 pub struct CellPosition {

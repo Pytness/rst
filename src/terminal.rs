@@ -166,7 +166,7 @@ impl Term {
 
         let mut n = len as isize;
         let mut start = 0;
-        let mut next = 0;
+        let mut next;
 
         /* This is similar to how the kernel handles ONLCR for ttys */
         while n > 0 {
@@ -188,7 +188,7 @@ impl Term {
     }
 
     fn twrite(&mut self, buffer: &[u8], buflen: usize, show_ctrl: bool) -> usize {
-        let mut charsize = 0;
+        let mut charsize;
         let mut i = 0;
         let mut u: char;
         let su0 = unsafe { SU };
@@ -1139,7 +1139,7 @@ fn execsh(cmd: Option<&CStr>, args: Option<&[&CStr]>) {
 fn xwrite(fd: i32, buffer: &[u8], len: usize) -> isize {
     let total_len: usize = len;
     let mut len = len;
-    let mut r = 0;
+    let mut r;
 
     while len > 0 {
         let s = buffer[total_len - len..].as_ptr() as *const libc::c_void;
