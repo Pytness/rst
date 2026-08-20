@@ -3,8 +3,8 @@ use std::ptr::null_mut;
 
 use crate::colors::{Color, ColorRegistry};
 use crate::config::{DEFAULTBG, VTIDEN};
-use crate::csiesq::{CSIEscape, STR_TERM_BEL, STR_TERM_ST};
-use crate::stresq::StrEscape;
+use crate::csiesc::{CSIEscape, STR_TERM_BEL, STR_TERM_ST};
+use crate::stresc::StrEscape;
 use crate::term_state::{CMDFD, CursorMovement, IOFD, PID, SU, TermMode, TermState};
 pub use crate::term_state::{IS_TRUECOL, TWRITE_ABORTED};
 use crate::utils::{is_control, is_control_c1, utf8decode};

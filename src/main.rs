@@ -10,7 +10,7 @@ mod app;
 mod boxdraw;
 mod colors;
 mod config;
-mod csiesq;
+mod csiesc;
 mod font_registry;
 mod gl_handler;
 mod glyph;
@@ -20,7 +20,7 @@ mod kitty;
 mod macros;
 mod renderers;
 mod sixel;
-mod stresq;
+mod stresc;
 mod term_state;
 mod terminal;
 mod text_manager;
@@ -52,7 +52,7 @@ fn main() {
     // (e.g. on the pre-move `term` local) leaves it dangling at a stack slot
     // that gets reused by later locals, corrupting memory the first time
     // something dereferences it (e.g. the OSC 10/11/12 color-query handling
-    // in stresq.rs, which nvim exercises on startup) — this was a real,
+    // in stresc.rs, which nvim exercises on startup) — this was a real,
     // intermittent crash.
     app.term.state._term_ptr = &mut app.term as *mut Term;
 

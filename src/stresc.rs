@@ -1,6 +1,6 @@
 use crate::colors::ColorRegistry;
 use crate::config;
-use crate::csiesq::STR_BUF_SIZ;
+use crate::csiesc::STR_BUF_SIZ;
 use crate::term_state::TermMode;
 use crate::term_state::TermState;
 use crate::terminal::EscapeState;
