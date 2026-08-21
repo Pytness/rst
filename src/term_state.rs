@@ -656,9 +656,14 @@ impl TermState {
                     self.tscrollup(0, self.c.y - row + 1);
                 }
 
-                for _j in row..self.row {
-                    // free(self.line[j]);
-                }
+                // NOTE:
+                // There should be no need to deallocate the lines, as they are
+                // Box<[Glyph]> and will be dropped automatically when the Vec
+                // is resized.
+                //
+                // for _j in row..self.row {
+                //     // free(self.line[j]);
+                // }
 
                 self.tswapscreen();
                 self.tcursor(CursorMovement::CursorLoad);
