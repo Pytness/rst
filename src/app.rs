@@ -230,6 +230,8 @@ impl<'a> App<'a> {
         self.gl_resize(size);
         self.cresize(size.width, size.height);
 
+        let background_color = self.term.colors.get_from_glyph_color(config::DEFAULTBG);
+
         unsafe {
             self.quad_renderer = Some(renderers::QuadRenderer::new(
                 self.gl
@@ -260,7 +262,7 @@ impl<'a> App<'a> {
                             0,
                             size.width as i32,
                             size.height as i32,
-                            (0.0, 0.0, 0.0, 0.0),
+                            background_color.as_f32_tuple(),
                         );
 
                     gl_surface.swap_buffers(gl_context);
@@ -567,7 +569,13 @@ impl<'a> App<'a> {
                                 self.text_renderer
                                     .as_mut()
                                     .expect("TextRenderer is not initialized")
-                                    .draw_cursor(cy as i32, cx as i32, drawcol.as_f32(), mode, 2);
+                                    .draw_cursor(
+                                        cy as i32,
+                                        cx as i32,
+                                        drawcol.as_f32_array(),
+                                        mode,
+                                        2,
+                                    );
                             });
                     }
                 }

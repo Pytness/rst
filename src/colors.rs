@@ -62,13 +62,19 @@ impl Color {
         }
     }
 
-    pub fn as_f32(&self) -> [f32; 4] {
-        [
+    pub fn as_f32_tuple(&self) -> (f32, f32, f32, f32) {
+        (
             self.red as f32 / 255.0,
             self.green as f32 / 255.0,
             self.blue as f32 / 255.0,
             self.alpha as f32 / 255.0,
-        ]
+        )
+    }
+
+    pub fn as_f32_array(&self) -> [f32; 4] {
+        let (r, g, b, a) = self.as_f32_tuple();
+
+        [r, g, b, a]
     }
 
     pub fn from_true_color(color: u32) -> Self {
