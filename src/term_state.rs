@@ -232,15 +232,9 @@ pub struct TermState {
 impl TermState {
     /// Check if any cell in the terminal has the specified attribute set.
     pub fn tattrset(&mut self, attr: GlyphAttribute) -> bool {
-        for row in 0..self.row {
-            for col in 0..self.col {
-                if self.line[row][col].mode.contains(attr) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        self.line
+            .iter()
+            .any(|row| row.iter().any(|cell| cell.mode.contains(attr)))
     }
 
     pub fn tsetdirt(&mut self, top: usize, bot: usize) {
@@ -254,14 +248,11 @@ impl TermState {
 
     /// Mark all lines containing any glyph with the specified attribute as dirty.
     pub fn tsetdirtattr(&mut self, attr: GlyphAttribute) {
-        for row in 0..self.row {
-            for col in 0..self.col {
-                if self.line[row][col].mode.contains(attr) {
-                    self.tsetdirt(row, row);
-                    break;
-                }
+        self.line.iter().enumerate().for_each(|(row, line)| {
+            if line.iter().any(|cell| cell.mode.contains(attr)) {
+                self.dirty[row] = true;
             }
-        }
+        });
     }
 
     pub fn tsetsixelattr(line: &mut Line, x1: usize, x2: usize) {
