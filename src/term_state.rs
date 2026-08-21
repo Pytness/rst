@@ -674,11 +674,12 @@ impl TermState {
             .resize_with(row, || vec![Glyph::default(); col].into_boxed_slice());
         self.alt
             .resize_with(row, || vec![Glyph::default(); col].into_boxed_slice());
+
         self.dirty.resize(row, true);
         self.tabs.resize(col, 0);
 
         fn resize_boxed_sliced(line: &mut Line, new_len: usize) {
-            let mut vec = line.to_owned().to_vec();
+            let mut vec = line.to_vec();
             vec.resize(new_len, Glyph::default());
             *line = vec.into_boxed_slice();
         }
