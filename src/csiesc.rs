@@ -49,57 +49,39 @@ impl Default for CSIEscape {
 
 impl CSIEscape {
     pub fn parse(&mut self) {
-        let mut p: *const u8 = self.buf.as_ptr();
-        let mut np: *mut u8;
-
-        let mut v;
-        let mut sep = b';'; // colon or semi-colon, but not both
-
         self.narg = 0;
 
-        unsafe {
-            if *p == b'?' {
-                self.private = true;
-                p = p.add(1);
-            }
-            self.buf[self.len] = 0;
+        let mut bytes: &[u8] = &self.buf[..self.len];
 
-            while p < self.buf.as_ptr().add(self.len) {
-                np = null_mut();
-                v = libc::strtol(p as *const i8, (&raw mut np) as *mut *mut i8, 10);
-
-                if (np as *const u8).eq(&p) {
-                    v = 0;
-                }
-
-                if v == i64::MAX || v == i64::MIN {
-                    v = -1;
-                }
-
-                self.arg[self.narg] = v as i32;
-                self.narg += 1;
-
-                p = np as *const u8;
-
-                if sep == b';' && *p as u8 == b':' {
-                    sep = b':'; // allow override to colon once
-                }
-
-                if *p as u8 != sep || self.narg == ESC_ARG_SIZ {
-                    break;
-                }
-
-                p = p.add(1);
-            }
-
-            self.mode[0] = *p;
-            p = p.add(1);
-            self.mode[1] = if p < self.buf.as_ptr().add(self.len) {
-                *p
-            } else {
-                0
-            };
+        if bytes.first() == Some(&b'?') {
+            self.private = true;
+            bytes = &bytes[1..];
         }
+
+        let mut sep = b';';
+
+        while !bytes.is_empty() {
+            let (value, rest) = parse_arg(bytes);
+            bytes = rest;
+
+            self.arg[self.narg] = value;
+            self.narg += 1;
+
+            let next = bytes.first().copied();
+
+            if sep == b';' && next == Some(b':') {
+                sep = b':';
+            }
+
+            if next != Some(sep) || self.narg == ESC_ARG_SIZ {
+                break;
+            }
+
+            bytes = &bytes[1..];
+        }
+
+        self.mode[0] = bytes.get(0).copied().unwrap_or(0);
+        self.mode[1] = bytes.get(1).copied().unwrap_or(0);
     }
 
     pub fn handle(&mut self, state: &mut TermState, win: &mut TermWindow) {
@@ -544,6 +526,26 @@ impl CSIEscape {
     pub fn reset(&mut self) {
         *self = Self::default();
     }
+}
+
+fn parse_arg(bytes: &[u8]) -> (i32, &[u8]) {
+    let negative = bytes.first() == Some(&b'-');
+    let digits = if negative { &bytes[1..] } else { bytes };
+
+    let digit_count = digits.iter().take_while(|b| b.is_ascii_digit()).count();
+    if digit_count == 0 {
+        return (0, bytes);
+    }
+
+    let magnitude = digits[..digit_count].iter().fold(0i64, |acc, &b| {
+        let digit = (b - b'0') as i64;
+        acc.saturating_mul(10).saturating_add(digit)
+    });
+
+    let value = if negative { -magnitude } else { magnitude };
+    let value = i32::try_from(value).unwrap_or(-1);
+
+    (value, &digits[digit_count..])
 }
 
 #[cfg(test)]
