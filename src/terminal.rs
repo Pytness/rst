@@ -460,14 +460,8 @@ impl Term {
                 let idx = self.csiescseq.len;
                 self.csiescseq.buf[idx] = u as u8;
                 self.csiescseq.len += 1;
-
                 let len = self.csiescseq.len;
-
                 if (u >= '\u{0040}' && u <= '\u{007E}') || len >= self.csiescseq.buf.len() - 1 {
-                    // NOTE:
-                    // this seems to be missing from st,
-                    // and on st, not setting esc to 0/empty, would result in a buffer overflow.
-                    self.esc = EscapeState::empty();
                     self.csiparse();
                     self.dcshandle();
                 }
