@@ -99,5 +99,12 @@ pub(crate) mod macs {
         }};
     }
 
-    pub(crate) use {assets_path, include_shader};
+    macro_rules! or_bitflags {
+        // A | B | C -> A.union(B).union(C)
+        ($first:ident $(| $rest:ident)*) => {
+            $first $(.union($rest))*
+        };
+    }
+
+    pub(crate) use {assets_path, include_shader, or_bitflags};
 }

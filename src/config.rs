@@ -1,24 +1,12 @@
 use std::ffi::CStr;
 
+use crate::macros::macs::or_bitflags as or;
 use crate::term_state::LOG_ENABLED;
 use winit::keyboard::{KeyCode, ModifiersState};
 
 use crate::app::App;
 
-pub struct MouseShortcut {
-    modifier: usize,
-    button: usize,
-    // callback: Fn,
-    args: (),
-    release: bool,
-    alt_screen: bool,
-}
-
-pub struct Shortcut {
-    pub modifiers: ModifiersState,
-    pub key: KeyCode,
-    pub callback: fn(&App),
-}
+use crate::keymap::{CONTROL, KeyMatch, ModifiersMatch::*, MouseShortcut, SHIFT, Shortcut};
 
 pub const TABSPACES: usize = 8;
 pub const HALIGN: f64 = 0.5;
@@ -55,25 +43,40 @@ pub const MAXLATENCY: u64 = 33;
 macro_rules! s {
     ($modifiers:expr, $key:expr, $callback:expr) => {
         Shortcut {
-            key: $key,
-            modifiers: $modifiers,
+            key_match: KeyMatch::new($modifiers, $key),
             callback: $callback,
         }
     };
 }
 
-pub fn toggle_recording(_app: &App) {
+pub fn toggle_recording(_app: &mut App) {
     println!("Toggling recording...");
     unsafe {
         LOG_ENABLED = !LOG_ENABLED;
     }
 }
 
+pub fn zoom_in(app: &mut App) {
+    println!("Zooming in...");
+}
+
+pub fn zoom_out(_app: &mut App) {
+    println!("Zooming out...");
+}
+
+pub fn zoom_reset(_app: &mut App) {
+    println!("Zoom reset...");
+}
+
 pub const MSHORTCUTS: Vec<MouseShortcut> = vec![];
 
 #[rustfmt::skip]
 pub const SHORTCUTS: &[Shortcut] = &[
-    s!(ModifiersState::empty(), KeyCode::F5, toggle_recording),
+    s!(Exact(or!(CONTROL | SHIFT)), KeyCode::Minus, zoom_out),
+    s!(Exact(or!(CONTROL | SHIFT)), KeyCode::Equal, zoom_in),
+    s!(Exact(or!(CONTROL | SHIFT)), KeyCode::Home, zoom_reset),
+
+    s!(Empty, KeyCode::F5, toggle_recording),
 ];
 
 pub const DEFAULTFG: u32 = 258;

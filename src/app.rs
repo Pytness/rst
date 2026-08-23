@@ -22,7 +22,7 @@ use crate::config::{self, MAXLATENCY, MINLATENCY};
 use crate::font_registry::{FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
-use crate::keymap::kmap;
+use crate::keymap::{KeyMatch, ModifiersMatch, kmap};
 use crate::renderers::{self, TextRenderer};
 use crate::term_state::SU;
 use crate::terminal::{TWRITE_ABORTED, Term};
@@ -165,8 +165,9 @@ impl<'a> App<'a> {
         let _is_alt_screen = self.term.state.tisaltscr();
 
         // shortcuts
+        let key_match = KeyMatch::new(ModifiersMatch::Exact(self.keyboard_modifiers), code);
         for shortcut in super::config::SHORTCUTS {
-            if shortcut.key == code && shortcut.modifiers == self.keyboard_modifiers {
+            if shortcut.key_match == key_match {
                 (shortcut.callback)(self);
                 return;
             }

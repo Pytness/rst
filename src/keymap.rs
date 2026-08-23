@@ -11,45 +11,91 @@ use winit::keyboard::{KeyCode, ModifiersState};
 // 	signed char appcursor; /* application cursor */
 // } Key;
 
-pub struct Key {
-    modifiers: ModifiersState,
-    key: KeyCode,
-    output: &'static CStr,
+#[derive(Debug, Clone, Copy)]
+pub enum ModifiersMatch {
+    Empty,
+    Exact(ModifiersState),
+    Any,
+}
+
+impl ModifiersMatch {
+    fn matches(&self, other: ModifiersMatch) -> bool {
+        match (self, other) {
+            (Empty, Empty) => true,
+            (Exact(m1), Exact(m2)) => *m1 == m2,
+            (Any, _) | (_, Any) => true,
+            _ => false,
+        }
+    }
+}
+
+pub struct KeyMatch {
+    pub modifiers: ModifiersMatch,
+    pub key: KeyCode,
+}
+
+impl KeyMatch {
+    pub const fn new(modifiers: ModifiersMatch, key: KeyCode) -> Self {
+        Self { modifiers, key }
+    }
+}
+
+impl PartialEq for KeyMatch {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key && self.modifiers.matches(other.modifiers)
+    }
+}
+
+pub struct MappedKey {
+    pub key_match: KeyMatch,
+    pub output: &'static CStr,
+}
+
+pub struct Shortcut {
+    pub key_match: KeyMatch,
+    pub callback: fn(app: &mut App),
+}
+
+pub struct MouseShortcut {
+    pub modifiers: ModifiersState,
+    pub button: u8,
+    pub callback: fn(),
+    pub release: bool,
 }
 
 macro_rules! k {
     ($modifiers:expr, $key:expr, $output:expr) => {
-        Key {
-            modifiers: $modifiers,
-            key: $key,
+        MappedKey {
+            key_match: KeyMatch::new($modifiers, $key),
             output: &$output,
         }
     };
 }
 
-const EMPTY: ModifiersState = ModifiersState::empty();
-const SHIFT: ModifiersState = ModifiersState::SHIFT;
-const CONTROL: ModifiersState = ModifiersState::CONTROL;
-const ALT: ModifiersState = ModifiersState::ALT;
-const SUPER: ModifiersState = ModifiersState::SUPER;
+pub const SHIFT: ModifiersState = ModifiersState::SHIFT;
+pub const CONTROL: ModifiersState = ModifiersState::CONTROL;
+pub const ALT: ModifiersState = ModifiersState::ALT;
+pub const SUPER: ModifiersState = ModifiersState::SUPER;
 
-// {XK_Return, ShiftMask, "\033[13;2u", 0, 0},
-// {XK_Return, ControlMask, "\033[13;5u", 0, 0},
-// {XK_Return, Mod1Mask, "\033[13;3u", 0, 0},
-// {XK_Return, XK_ANY_MOD, "\r", 0, 0},
+use ModifiersMatch::*;
 
-const KEYMAPS: &[Key] = &[
-    k!(SHIFT, KeyCode::Enter, c"\x1b[13;2u"),
-    k!(CONTROL, KeyCode::Enter, c"\x1b[13;5u"),
-    k!(ALT, KeyCode::Enter, c"\x1b[13;3u"),
-    k!(EMPTY, KeyCode::Enter, c"\r"),
+use crate::app::App;
+
+const KEYMAPS: &[MappedKey] = &[
+    k!(Empty, KeyCode::Enter, c"\r"),
+    k!(Exact(SHIFT), KeyCode::Enter, c"\x1b[13;2u"),
+    k!(Exact(CONTROL), KeyCode::Enter, c"\x1b[13;5u"),
+    k!(Exact(ALT), KeyCode::Enter, c"\x1b[13;3u"),
 ];
 
 pub fn kmap(code: KeyCode, modifiers: ModifiersState) -> Option<&'static CStr> {
-    for key in KEYMAPS {
-        if key.key == code && key.modifiers == modifiers {
-            return Some(key.output);
+    let key_match = KeyMatch::new(Exact(modifiers), code);
+
+    for mapped_key in KEYMAPS {
+        if mapped_key.key_match == key_match {
+            return Some(mapped_key.output);
         }
     }
+
     None
 }
