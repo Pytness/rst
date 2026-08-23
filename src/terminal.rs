@@ -230,7 +230,6 @@ impl Term {
                     break;
                 }
             } else {
-                eprintln!("Non-UTF8 mode is not supported in this implementation");
                 u = (buffer[i] & 0xFF) as char;
                 charsize = 1;
             }
