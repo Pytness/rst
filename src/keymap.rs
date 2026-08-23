@@ -12,16 +12,16 @@ use winit::keyboard::{KeyCode, ModifiersState};
 // } Key;
 
 pub struct Key {
-    key: KeyCode,
     modifiers: ModifiersState,
+    key: KeyCode,
     output: &'static CStr,
 }
 
 macro_rules! k {
-    ($key:expr, $modifiers:expr, $output:expr) => {
+    ($modifiers:expr, $key:expr, $output:expr) => {
         Key {
-            key: $key,
             modifiers: $modifiers,
+            key: $key,
             output: &$output,
         }
     };
@@ -39,10 +39,10 @@ const SUPER: ModifiersState = ModifiersState::SUPER;
 // {XK_Return, XK_ANY_MOD, "\r", 0, 0},
 
 const KEYMAPS: &[Key] = &[
-    k!(KeyCode::Enter, SHIFT, c"\x1b[13;2u"),
-    k!(KeyCode::Enter, CONTROL, c"\x1b[13;5u"),
-    k!(KeyCode::Enter, ALT, c"\x1b[13;3u"),
-    k!(KeyCode::Enter, EMPTY, c"\r"),
+    k!(SHIFT, KeyCode::Enter, c"\x1b[13;2u"),
+    k!(CONTROL, KeyCode::Enter, c"\x1b[13;5u"),
+    k!(ALT, KeyCode::Enter, c"\x1b[13;3u"),
+    k!(EMPTY, KeyCode::Enter, c"\r"),
 ];
 
 pub fn kmap(code: KeyCode, modifiers: ModifiersState) -> Option<&'static CStr> {
