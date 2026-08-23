@@ -460,8 +460,13 @@ impl Term {
                 let idx = self.csiescseq.len;
                 self.csiescseq.buf[idx] = u as u8;
                 self.csiescseq.len += 1;
+
                 let len = self.csiescseq.len;
-                if (u >= '\u{0040}' && u <= '\u{007E}') || len >= self.csiescseq.buf.len() - 1 {
+
+                if BETWEEN!(u as u8, 0x40, 0x7E) || len >= self.csiescseq.buf.len() - 1 {
+                    // Only the intro is CSI-shaped; drop ESC_DCS so the payload falls into the
+                    // ESC_STR body consumer below instead of printing as literal text.
+                    self.esc.remove(EscapeState::ESC_DCS);
                     self.csiparse();
                     self.dcshandle();
                 }
