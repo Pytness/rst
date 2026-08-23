@@ -23,6 +23,8 @@ static mut LOG_READ_FD: i32 = -1;
 /// fd for the raw-bytes-written-to-the-pty log (our input to the child), or -1 if disabled.
 static mut LOG_WRITE_FD: i32 = -1;
 
+pub static mut LOG_ENABLED: bool = false;
+
 /// Opens `rst-read.log` and `rst-write.log` (truncated) in the current
 /// directory to capture the raw tty byte streams. Best-effort: a failure to
 /// open either file just leaves that log disabled, it doesn't stop the
@@ -58,6 +60,10 @@ pub fn init_tty_logs() {
 /// On write failure the log is closed and disabled for the rest of the run.
 unsafe fn log_bytes(fd_ptr: *mut i32, buf: &[u8]) {
     unsafe {
+        if !LOG_ENABLED {
+            return;
+        }
+
         let fd = *fd_ptr;
         if fd < 0 || buf.is_empty() {
             return;

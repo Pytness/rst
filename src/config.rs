@@ -1,6 +1,9 @@
 use std::ffi::CStr;
 
-use winit::keyboard::KeyCode;
+use crate::term_state::LOG_ENABLED;
+use winit::keyboard::{KeyCode, ModifiersState};
+
+use crate::app::App;
 
 pub struct MouseShortcut {
     modifier: usize,
@@ -12,11 +15,9 @@ pub struct MouseShortcut {
 }
 
 pub struct Shortcut {
-    modifier: usize,
-    key: KeyCode,
-    // callback: Fn,
-    args: (),
-    alt_screen: bool,
+    pub modifiers: ModifiersState,
+    pub key: KeyCode,
+    pub callback: fn(&App),
 }
 
 pub const TABSPACES: usize = 8;
@@ -51,8 +52,29 @@ pub const MAXLATENCY: u64 = 33;
 //         {TERMMOD, XK_F7, unloadimages, {.i = 0}},     {TERMMOD, XK_F8, toggleimages, {.i = 0}},
 // };
 
+macro_rules! s {
+    ($modifiers:expr, $key:expr, $callback:expr) => {
+        Shortcut {
+            key: $key,
+            modifiers: $modifiers,
+            callback: $callback,
+        }
+    };
+}
+
+pub fn toggle_recording(_app: &App) {
+    println!("Toggling recording...");
+    unsafe {
+        LOG_ENABLED = !LOG_ENABLED;
+    }
+}
+
 pub const MSHORTCUTS: Vec<MouseShortcut> = vec![];
-pub const shortcuts: Vec<Shortcut> = vec![];
+
+#[rustfmt::skip]
+pub const SHORTCUTS: &[Shortcut] = &[
+    s!(ModifiersState::empty(), KeyCode::F5, toggle_recording),
+];
 
 pub const DEFAULTFG: u32 = 258;
 pub const DEFAULTBG: u32 = 259;

@@ -165,14 +165,11 @@ impl<'a> App<'a> {
         let _is_alt_screen = self.term.state.tisaltscr();
 
         // shortcuts
-        for _shorcut in super::config::shortcuts {
-            /*
-             * TODO:
-             * match shortcuts
-             * if matches shortcut {
-             * return;
-             * }
-             */
+        for shortcut in super::config::SHORTCUTS {
+            if shortcut.key == code && shortcut.modifiers == self.keyboard_modifiers {
+                (shortcut.callback)(self);
+                return;
+            }
         }
 
         // custom keys from config
