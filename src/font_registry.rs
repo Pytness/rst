@@ -2,6 +2,7 @@ use fontconfig::CharSet;
 use fontconfig::FC_FAMILY;
 use fontconfig::FC_MATRIX;
 use fontconfig::FC_SCALABLE;
+use fontconfig::FC_SIZE;
 use fontconfig::FC_SLANT;
 use fontconfig::FC_SLANT_ITALIC;
 use fontconfig::FC_WEIGHT;
@@ -11,6 +12,7 @@ use fontconfig::Pattern;
 use fontconfig_sys::FcFontSet;
 use fontconfig_sys::FcMatrix;
 use fontconfig_sys::FcPattern;
+use fontconfig_sys::FcResultMatch;
 use fontconfig_sys::FcResultNoMatch;
 use fontconfig_sys::statics::LIB;
 use freetype::face::StyleFlag;
@@ -25,7 +27,10 @@ use std::sync::LazyLock;
 use freetype::{Face, Library};
 use rustybuzz::{Face as RbFace, UnicodeBuffer};
 
-const DEFAULT_DPI: u32 = 96;
+pub const DEFAULT_DPI: u32 = 96;
+
+// Only used if the first font in `config::FONTS` has no `size=` hint to read.
+const FALLBACK_FONT_SIZE_PX: f32 = 10.0;
 
 static FT_LIB: LazyLock<Library> =
     LazyLock::new(|| Library::init().expect("failed to initialize FreeType library"));
@@ -108,19 +113,16 @@ impl FontEntry {
     }
 }
 
+// (family, italic, bold)
 type FallbackKey = (Option<String>, bool, bool);
 
 pub struct FontRegistry {
     fonts: RefCell<Vec<FontEntry>>,
     shape_buffer: RefCell<Option<UnicodeBuffer>>,
     char_size: RefCell<Option<(isize, u32)>>,
-    /// (family, italic, bold) + character combinations Fontconfig has confirmed no
-    /// installed font covers, so `register_by_charcode` doesn't repeat the search.
+    default_font_size_px: Option<f32>,
+    /// fonts Fontconfig has confirmed no installed font covers
     no_coverage: RefCell<HashSet<(FallbackKey, char)>>,
-    /// `FcFontSort` result per (family, italic, bold), reused across every
-    /// single-character fallback lookup for that style (mirrors st's `Font.set`
-    /// cache in x.c). Never freed: it lives for the process's lifetime, same as
-    /// the registered fonts themselves.
     fallback_sets: RefCell<HashMap<FallbackKey, *mut FcFontSet>>,
 }
 
@@ -205,12 +207,47 @@ fn match_pattern(pattern: &Pattern) -> Option<(String, FcMatrix)> {
     ))
 }
 
+/// Like `match_pattern`, but also returns the `FC_SIZE` (point size)
+/// Fontconfig resolved for the matched font - i.e. the size of the font
+/// actually loaded, honoring Fontconfig's own substitution/defaulting,
+/// rather than re-parsing the literal `size=` string a caller asked for.
+fn match_pattern_with_size(pattern: &Pattern) -> Option<(String, FcMatrix, Option<f64>)> {
+    let mut pattern = pattern.clone();
+    let fmatch = pattern.font_match().ok()?;
+    let matrix = pattern_matrix(&fmatch);
+    let size = pattern_size(&fmatch);
+
+    Some((
+        fmatch
+            .filename()
+            .expect("fontconfig match has no filename")
+            .to_string(),
+        matrix,
+        size,
+    ))
+}
+
+/// Reads the `FC_SIZE` (point size) property off a matched pattern, if set.
+fn pattern_size(pattern: &Pattern) -> Option<f64> {
+    let mut size: f64 = 0.0;
+    let result = unsafe {
+        (LIB.FcPatternGetDouble)(
+            pattern.as_ptr() as *mut FcPattern,
+            FC_SIZE.as_ptr(),
+            0,
+            &mut size,
+        )
+    };
+    (result == FcResultMatch).then_some(size)
+}
+
 impl FontRegistry {
     pub fn new() -> Self {
         FontRegistry {
             fonts: RefCell::new(Vec::new()),
             shape_buffer: RefCell::new(Some(UnicodeBuffer::new())),
             char_size: RefCell::new(None),
+            default_font_size_px: None,
             no_coverage: RefCell::new(HashSet::new()),
             fallback_sets: RefCell::new(HashMap::new()),
         }
@@ -241,16 +278,26 @@ impl FontRegistry {
             match_pattern(&pattern)
         };
 
-        let Some(regular) = styled(None, None) else {
+        let Some((regular_path, regular_matrix, regular_size)) = match_pattern_with_size(&base)
+        else {
             eprintln!("Warning: failed to find regular style for font '{}'", name);
             return;
         };
+
+        // The rendered font size comes from the regular style's
+        // Fontconfig-resolved size on the first registered font
+        if self.default_font_size_px.is_none() {
+            if let Some(size) = regular_size {
+                self.default_font_size_px = Some(size as f32);
+            }
+        }
+
         let italic = styled(Some(FC_SLANT_ITALIC), None);
         let bold = styled(Some(0), Some(FC_WEIGHT_BOLD));
         let italic_bold = styled(Some(FC_SLANT_ITALIC), Some(FC_WEIGHT_BOLD));
 
         self.fonts.get_mut().push(FontEntry::new(
-            FontFace::new(regular),
+            FontFace::new((regular_path, regular_matrix)),
             italic.map(FontFace::new),
             bold.map(FontFace::new),
             italic_bold.map(FontFace::new),
@@ -431,10 +478,17 @@ impl FontRegistry {
             .expect("failed to select color size");
     }
 
+    /// The pixel size to render at, parsed from the `size=` Fontconfig hint
+    /// on the first font in `config::FONTS` (falls back to
+    /// `FALLBACK_FONT_SIZE_PX` if that font had no `size=` hint to read).
+    pub fn default_font_size_px(&self) -> f32 {
+        self.default_font_size_px.unwrap_or(FALLBACK_FONT_SIZE_PX)
+    }
+
     /// Sets the character size for all registered fonts, including any fallback
     /// fonts discovered later via `register_by_charcode`.
-    pub fn set_char_size(&self, char_size: isize, dpi: Option<u32>) {
-        let char_size = char_size * 64;
+    pub fn set_char_size(&self, char_size: f32, dpi: Option<u32>) {
+        let char_size = (char_size * 64.0).round() as isize;
         let dpi = dpi.unwrap_or(DEFAULT_DPI);
         *self.char_size.borrow_mut() = Some((char_size, dpi));
 
@@ -451,7 +505,15 @@ impl FontRegistry {
                 .set_char_size(0, char_size, dpi, dpi)
                 .expect("failed to set char size");
         } else {
-            self.set_color_size(&face.ft_face, char_size);
+            // `char_size` is 26.6 fixed-point points (`set_char_size` already
+            // multiplied by 64), but `set_color_size` matches against strike
+            // widths that FreeType reports in plain pixels. Convert the same
+            // way FreeType itself turns points into pixels for an outline
+            // face (pixels = points * dpi / 72), or every color font would
+            // always match its largest embedded strike regardless of the
+            // configured size.
+            let pixel_size = (char_size as f64 / 64.0 * dpi as f64 / 72.0).round() as isize;
+            self.set_color_size(&face.ft_face, pixel_size);
         }
     }
 

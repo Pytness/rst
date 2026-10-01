@@ -19,7 +19,7 @@ use winit::window::WindowId;
 
 use crate::colors::Color;
 use crate::config::{self, MAXLATENCY, MINLATENCY};
-use crate::font_registry::{FontRegistry, FontStyle};
+use crate::font_registry::{DEFAULT_DPI, FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute};
 use crate::keymap::{KeyMatch, ModifiersMatch, kmap};
@@ -44,7 +44,13 @@ pub struct App<'a> {
     font_registry: FontRegistry,
     text_renderer: Option<TextRenderer<'a>>,
     quad_renderer: Option<renderers::QuadRenderer>,
-    conf_font_size_px: u32,
+    // Offset applied on top of `FontRegistry::default_font_size_px` by the
+    // zoom shortcuts (`config::zoom_in`/`zoom_out`/`zoom_reset`).
+    zoom_offset_px: f32,
+    // winit's `Window::scale_factor()`, kept in sync via `ScaleFactorChanged`
+    // and applied as a multiplier on top of `font_registry::DEFAULT_DPI` so
+    // fonts render at the right physical size on HiDPI displays.
+    scale_factor: f64,
     loop_timeout: f64,
 
     // Mirrors st's `drawing`/`trigger`: once tty or window input starts a
@@ -92,7 +98,8 @@ impl<'a> App<'a> {
             font_registry,
             text_renderer: None,
             quad_renderer: None,
-            conf_font_size_px: 16,
+            zoom_offset_px: 0.0,
+            scale_factor: 1.0,
             loop_timeout: 0.0,
 
             drawing: false,
@@ -220,14 +227,9 @@ impl<'a> App<'a> {
     }
     pub fn cmessage(&mut self) {}
 
-    pub fn resize(&mut self, size: PhysicalSize<u32>) {
-        if size.width == self.term.win.w && size.height == self.term.win.h {
-            return;
-        }
-
-        self.gl_resize(size);
-        self.cresize(size.width, size.height);
-
+    pub fn clear_screen_buffers(&mut self) {
+        let width = self.term.win.w;
+        let height = self.term.win.h;
         let background_color = self.term.colors.get_from_glyph_color(config::DEFAULTBG);
 
         unsafe {
@@ -236,8 +238,8 @@ impl<'a> App<'a> {
                     .as_ref()
                     .expect("GL context is not initialized")
                     .clone(),
-                size.width as i32,
-                size.height as i32,
+                width as i32,
+                height as i32,
             ));
 
             if let Some(AppState {
@@ -258,14 +260,27 @@ impl<'a> App<'a> {
                         .clear_section(
                             0,
                             0,
-                            size.width as i32,
-                            size.height as i32,
+                            width as i32,
+                            height as i32,
                             background_color.as_f32_tuple(),
                         );
 
-                    gl_surface.swap_buffers(gl_context);
+                    let _ = gl_surface.swap_buffers(gl_context);
                 }
             }
+        }
+    }
+
+    pub fn resize(&mut self, size: PhysicalSize<u32>) {
+        if size.width == self.term.win.w && size.height == self.term.win.h {
+            return;
+        }
+
+        unsafe {
+            self.gl_resize(size);
+            self.cresize(size.width, size.height);
+
+            self.clear_screen_buffers();
 
             self.text_renderer
                 .as_mut()
@@ -339,6 +354,66 @@ impl<'a> App<'a> {
 
             term.ttywrite(msg.as_bytes(), msg.len(), true);
         }
+    }
+
+    // Floor for `zoom_out`, so repeated presses can't shrink cells to a
+    // degenerate/zero size.
+    const MIN_FONT_SIZE_PX: f32 = 4.0;
+
+    /// `font_registry::DEFAULT_DPI` (the DPI the configured font sizes were
+    /// tuned against) scaled by the window's current `scale_factor`, so
+    /// glyphs come out the right physical size on HiDPI displays.
+    fn effective_dpi(&self) -> u32 {
+        (DEFAULT_DPI as f64 * self.scale_factor).round() as u32
+    }
+
+    fn effective_font_size_px(&self) -> f32 {
+        (self.font_registry.default_font_size_px() + self.zoom_offset_px)
+            .max(Self::MIN_FONT_SIZE_PX)
+    }
+
+    /// Re-applies the current font size/DPI (after a zoom shortcut or a
+    /// `ScaleFactorChanged` event) without touching the window's pixel
+    /// dimensions: rebuilds font metrics, updates the terminal's cell size,
+    /// recomputes rows/cols for the unchanged window size, and forces a full
+    /// redraw since the glyph atlas was just cleared.
+    fn apply_font_size(&mut self) {
+        let px_size = self.effective_font_size_px();
+        let dpi = self.effective_dpi();
+
+        let Some(text_renderer) = self.text_renderer.as_mut() else {
+            return;
+        };
+
+        text_renderer.update_font_size(px_size, dpi);
+        let font_size = text_renderer.font_size();
+        self.term.win.cw = font_size.width as u32;
+        self.term.win.ch = font_size.height as u32;
+
+        self.cresize(0, 0);
+
+        self.term.state.dirty.fill(true);
+
+        self.clear_screen_buffers();
+
+        if let Some(AppState { window, .. }) = self.app_state.as_ref() {
+            window.request_redraw();
+        }
+    }
+
+    pub fn zoom_in(&mut self) {
+        self.zoom_offset_px += config::ZOOM_STEP_PX;
+        self.apply_font_size();
+    }
+
+    pub fn zoom_out(&mut self) {
+        self.zoom_offset_px -= config::ZOOM_STEP_PX;
+        self.apply_font_size();
+    }
+
+    pub fn zoom_reset(&mut self) {
+        self.zoom_offset_px = 0.0;
+        self.apply_font_size();
     }
 
     pub fn visibility(&mut self) {}
@@ -701,6 +776,12 @@ impl<'a> App<'a> {
             } => self.kpress(event),
             WindowEvent::Resized(size) => self.resize(size),
 
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.scale_factor = scale_factor;
+                self.clear_screen_buffers();
+                self.apply_font_size();
+            }
+
             WindowEvent::RedrawRequested => {
                 if let Some(AppState {
                     gl_surface,
@@ -808,6 +889,10 @@ impl<'a> ApplicationHandler for App<'a> {
 
         self.term.win.mode.insert(WinMode::Visible);
 
+        self.scale_factor = window.scale_factor();
+        let dpi = self.effective_dpi();
+        let px_size = self.effective_font_size_px();
+
         // FontRegistry must outlive TextRenderer
         self.text_renderer.get_or_insert_with(|| unsafe {
             // This is safe because the font registry is owned by the App struct
@@ -822,7 +907,8 @@ impl<'a> ApplicationHandler for App<'a> {
                     .expect("GL context is not initialized")
                     .clone(),
                 font_registry,
-                self.conf_font_size_px,
+                px_size,
+                dpi,
                 (width, height),
             )
         });
@@ -1008,8 +1094,7 @@ impl<'a> ApplicationHandler for App<'a> {
             let events = std::mem::take(&mut self.unhandled_events);
 
             for event in events {
-                println!("Processing unhandled event: {:?}", event);
-                // self.handle_window_event(event_loop, id, event);
+                self.handle_window_event(event_loop, id, event);
             }
         }
 

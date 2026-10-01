@@ -44,7 +44,7 @@ pub fn boxdrawindex(u: char) -> u32 {
     }
 
     if BOXDRAW && block == 0x2500 {
-        return BDB | BOXDATA[u as usize];
+        return BDB | BOXDATA[(u & 0xff) as usize];
     }
 
     return BOXDATA[u as usize];

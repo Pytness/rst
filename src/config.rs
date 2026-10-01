@@ -56,16 +56,19 @@ pub fn toggle_recording(_app: &mut App) {
     }
 }
 
+// How many pixels each zoom_in/zoom_out shortcut press changes the font size by.
+pub const ZOOM_STEP_PX: f32 = 0.5;
+
 pub fn zoom_in(app: &mut App) {
-    println!("Zooming in...");
+    app.zoom_in();
 }
 
-pub fn zoom_out(_app: &mut App) {
-    println!("Zooming out...");
+pub fn zoom_out(app: &mut App) {
+    app.zoom_out();
 }
 
-pub fn zoom_reset(_app: &mut App) {
-    println!("Zoom reset...");
+pub fn zoom_reset(app: &mut App) {
+    app.zoom_reset();
 }
 
 pub const MSHORTCUTS: Vec<MouseShortcut> = vec![];

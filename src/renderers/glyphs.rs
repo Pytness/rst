@@ -100,9 +100,8 @@ impl<'a> TextRenderer<'a> {
         self.font_size_px
     }
 
-    pub fn update_font_size(&mut self, px_size: u32, dpi: u32) {
-        self.font_registry
-            .set_char_size(px_size as isize, Some(dpi));
+    pub fn update_font_size(&mut self, px_size: f32, dpi: u32) {
+        self.font_registry.set_char_size(px_size, Some(dpi));
 
         let metrics = self
             .font_registry
@@ -121,7 +120,8 @@ impl<'a> TextRenderer<'a> {
             descender,
         };
 
-        self.px_size = px_size as f32;
+        // `metrics.y_ppem` is FreeType's actually-resolved pixels-per-em
+        self.px_size = metrics.y_ppem as f32;
 
         self.text_manager = TextManager::new(
             cell_width.ceil() as i32,
@@ -140,7 +140,8 @@ impl<'a> TextRenderer<'a> {
     pub unsafe fn new(
         gl: Rc<glow::Context>,
         font_registry: &'a FontRegistry,
-        px_size: u32,
+        px_size: f32,
+        dpi: u32,
         size: (i32, i32),
     ) -> Self {
         // BUG:
@@ -157,7 +158,7 @@ impl<'a> TextRenderer<'a> {
             eprintln!("Warning: failed to set LCD filter (error code {})", err);
         }
 
-        font_registry.set_char_size(px_size as isize, None);
+        font_registry.set_char_size(px_size, Some(dpi));
 
         let metrics = font_registry
             .size_metrics()
@@ -250,7 +251,9 @@ impl<'a> TextRenderer<'a> {
             u_proj,
             u_tex,
             font_size_px,
-            px_size: px_size as f32,
+            // See the comment in `update_font_size`: this must be the actual
+            // rendered pixels-per-em, not the nominal `px_size` argument.
+            px_size: metrics.y_ppem as f32,
         }
     }
 
