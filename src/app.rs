@@ -698,12 +698,24 @@ impl<'a> App<'a> {
                 let mut fg = g.fg;
                 let bg = g.bg;
 
-                if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT) && fg < 7 {
+                let is_bold = g.mode.contains(GlyphAttribute::ATTR_BOLD);
+                let is_faint = g.mode.contains(GlyphAttribute::ATTR_FAINT);
+
+                if is_bold && !is_faint && fg < 7 {
                     fg += 8;
                 }
 
                 let mut fg_color = self.term.colors.get_from_glyph_color(fg);
                 let mut bg_color = self.term.colors.get_from_glyph_color(bg);
+
+                if is_faint && !is_bold {
+                    fg_color = Color {
+                        red: fg_color.red / 2,
+                        green: fg_color.green / 2,
+                        blue: fg_color.blue / 2,
+                        alpha: fg_color.alpha,
+                    };
+                }
 
                 if g.mode.contains(GlyphAttribute::ATTR_REVERSE) {
                     std::mem::swap(&mut fg_color, &mut bg_color);
@@ -1123,7 +1135,7 @@ fn glyph_to_font_style(g: &Glyph) -> FontStyle {
         FontStyle::ItalicBold
     } else if g.mode.contains(GlyphAttribute::ATTR_ITALIC) {
         FontStyle::Italic
-    } else if g.mode.intersects(GlyphAttribute::ATTR_BOLD_FAINT) {
+    } else if g.mode.intersects(GlyphAttribute::ATTR_BOLD) {
         FontStyle::Bold
     } else {
         FontStyle::Regular
