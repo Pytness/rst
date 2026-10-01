@@ -13,8 +13,8 @@ pub const HALIGN: f64 = 0.5;
 pub const VALIGN: f64 = 0.5;
 pub const VTIDEN: &[u8] = b"\x1b[?62;4c";
 
-pub const MINLATENCY: u64 = 2;
-pub const MAXLATENCY: u64 = 33;
+pub const MINLATENCY: u32 = 2;
+pub const MAXLATENCY: u32 = 33;
 
 /*
  * Internal mouse shortcuts.

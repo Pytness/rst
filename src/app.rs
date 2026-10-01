@@ -753,7 +753,7 @@ impl<'a> App<'a> {
         };
 
         event_loop.set_control_flow(ControlFlow::WaitUntil(
-            now + Duration::from_secs_f64(wait_ms / 1e3),
+            now + Duration::from_millis(wait_ms as u64),
         ));
     }
 
@@ -950,9 +950,15 @@ impl<'a> ApplicationHandler for App<'a> {
             return;
         }
 
-        if ttyread_pending() {
-            self.loop_timeout = 0.0;
-        }
+        /*
+         * C:
+         * if (XPending(xw.dpy) || ttyread_pending()) {
+         *     timeout = 0; /* existing events might not set xfd */
+         * }
+         *
+         * This is not needed in winit because this fucntion is called whenever there are new events
+         */
+        self.loop_timeout = 0.0;
 
         // TODO:
         // /* Decrease the timeout if there are active animations. */
@@ -965,16 +971,16 @@ impl<'a> ApplicationHandler for App<'a> {
         // indefinitely or we'd freeze resize/keyboard handling until the next
         // tty byte. Bound the wait the same way an idle st would eventually
         // wake up on XPending().
-        let timeout = if self.loop_timeout < 0.0 {
-            MINLATENCY as f64
-        } else {
-            self.loop_timeout
-        };
 
-        let secs = (timeout / 1e3).trunc();
-        let seltv = libc::timespec {
-            tv_sec: secs as libc::time_t,
-            tv_nsec: ((timeout - secs * 1e3) * 1e6) as libc::c_long,
+        let seltv = {
+            let timeout = self.loop_timeout;
+
+            let secs = (timeout / 1e3).trunc();
+
+            libc::timespec {
+                tv_sec: secs as libc::time_t,
+                tv_nsec: ((timeout - secs * 1e3) * 1e6) as libc::c_long,
+            }
         };
 
         let ttyin = if let Some(ttyfd) = self.ttyfd {
@@ -996,7 +1002,7 @@ impl<'a> ApplicationHandler for App<'a> {
                         panic!("pselect failed: {}", std::io::Error::last_os_error());
                     }
                     // interrupted by a signal: retry immediately, like C's `continue`
-                    event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now()));
+                    event_loop.set_control_flow(ControlFlow::Poll);
                     return;
                 }
 
@@ -1038,9 +1044,9 @@ impl<'a> ApplicationHandler for App<'a> {
                 self.last_blink = now;
             }
 
-            let elapsed_ms = (now - self.trigger).as_secs_f64() * 1e3;
-            self.loop_timeout =
-                (MAXLATENCY as f64 - elapsed_ms) / MAXLATENCY as f64 * MINLATENCY as f64;
+            let elapsed_ms = (now - self.trigger).as_millis() as u32;
+            self.loop_timeout = MAXLATENCY.saturating_sub(elapsed_ms) as f64 / MAXLATENCY as f64
+                * MINLATENCY as f64;
 
             if self.loop_timeout > 0.0 {
                 // we have time, try to find idle
@@ -1062,10 +1068,12 @@ impl<'a> ApplicationHandler for App<'a> {
 
         // idle detected or maxlatency exhausted -> draw
         self.loop_timeout = -1.0;
+        let cursor_blinks = self.term.win.cursor.blinks();
+        let tattr_blink = self.term.state.tattrset(GlyphAttribute::ATTR_BLINK);
 
-        if config::BLINK_TIMEOUT > 0 && self.term.state.tattrset(GlyphAttribute::ATTR_BLINK) {
-            let elapsed_ms = (now - self.last_blink).as_secs_f64() * 1e3;
-            if elapsed_ms >= config::BLINK_TIMEOUT as f64 {
+        if config::BLINK_TIMEOUT > 0 && (cursor_blinks || tattr_blink) {
+            let elapsed_ms = (now - self.last_blink).as_millis() as u64;
+            if elapsed_ms >= config::BLINK_TIMEOUT {
                 self.term.win.mode.toggle(WinMode::Blink);
                 self.last_blink = now;
                 self.term.state.tsetdirtattr(GlyphAttribute::ATTR_BLINK);
