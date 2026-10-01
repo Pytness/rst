@@ -1466,8 +1466,12 @@ impl TermState {
                 }
             }
         } else if count < 0 {
+            let mut count = count;
+
             while x > 0 && count < 0 {
                 x -= 1;
+                count += 1;
+
                 while x > 0 && self.tabs[x] == 0 {
                     x -= 1;
                 }
