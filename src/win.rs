@@ -35,7 +35,6 @@ bitflags! {
 #[rustfmt::skip]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CursorStyle {
-
     BlinkingBlock =        0, // blinking block
     #[default]
     BlinkingBlockDefault = 1, // blinking block (default)
@@ -46,6 +45,17 @@ pub enum CursorStyle {
     SteadyBar            = 6, // steady bar ("|")
 }
 
+impl CursorStyle {
+    pub fn blinks(&self) -> bool {
+        matches!(
+            self,
+            CursorStyle::BlinkingBlock
+                | CursorStyle::BlinkingBlockDefault
+                | CursorStyle::BlinkingUnderline
+                | CursorStyle::BlinkingBar
+        )
+    }
+}
 impl TryFrom<i32> for CursorStyle {
     type Error = ();
 

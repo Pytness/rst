@@ -592,14 +592,7 @@ impl<'a> App<'a> {
         }
 
         if win.mode.contains(WinMode::Focused) {
-            let cursor_blinks = match win.cursor {
-                CursorStyle::BlinkingBlock
-                | CursorStyle::BlinkingBlockDefault
-                | CursorStyle::BlinkingUnderline
-                | CursorStyle::BlinkingBar => true,
-                _ => false,
-            };
-
+            let cursor_blinks = win.cursor.blinks();
             let blink_mode = win.mode.contains(WinMode::Blink);
 
             match win.cursor {
@@ -620,7 +613,7 @@ impl<'a> App<'a> {
                                     .as_mut()
                                     .expect("TextRenderer is not initialized")
                                     .draw_glyphs(
-                                        fontspects.as_slice(),
+                                        &fontspects,
                                         cy as i32,
                                         cx as i32,
                                         &ortho(win.w as f32, win.h as f32),
@@ -629,7 +622,7 @@ impl<'a> App<'a> {
                     }
                 }
 
-                mode => {
+                cursor_style => {
                     if cursor_blinks && blink_mode {
                         return;
                     }
@@ -646,7 +639,7 @@ impl<'a> App<'a> {
                                         cy as i32,
                                         cx as i32,
                                         drawcol.as_f32_array(),
-                                        mode,
+                                        cursor_style,
                                         2,
                                     );
                             });
