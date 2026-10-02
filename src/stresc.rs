@@ -217,7 +217,7 @@ impl StrEscape {
 
                     if !p.is_null() && p_str == Some("?") {
                         self.osc_color_response(colors, j, 0, true, term_ptr);
-                    } else if j >= 0 && !colors.set_color_name(j as usize, p_str) {
+                    } else if j < 0 || !colors.set_color_name(j as usize, p_str) {
                         if par == 104 && self.narg <= 1 {
                             colors.load_colors();
                             return;
