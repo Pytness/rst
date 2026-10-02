@@ -109,7 +109,8 @@ impl CSIEscape {
             b'e'   // VPR -- Cursor <n> Down
             => {
                 DEFAULT!(self.arg[0], 1);
-                state.tmoveto(state.c.x, state.c.y + self.arg[0] as usize);
+                let y = state.c.y + self.arg[0].max(0) as usize;
+                state.tmoveto(state.c.x, y);
             }
 
             // MC -- Media Copy
@@ -146,7 +147,8 @@ impl CSIEscape {
             b'a'  // HPR -- Cursor <n> Forward
             => {
                 DEFAULT!(self.arg[0], 1);
-                state.tmoveto(state.c.x + self.arg[0] as usize, state.c.y);
+                let x = state.c.x + self.arg[0].max(0) as usize;
+                state.tmoveto(x, state.c.y);
             }
 
             // CUB  -- Cursor <n> Backward
@@ -158,7 +160,8 @@ impl CSIEscape {
             // CNL -- Cursor <n> Down and first col
             b'E' => {
                 DEFAULT!(self.arg[0], 1);
-                state.tmoveto(0, state.c.y + self.arg[0] as usize);
+                let y = state.c.y + self.arg[0].max(0) as usize;
+                state.tmoveto(0, y);
             }
 
             // CPL -- Cursor <n> Up and first col
@@ -323,7 +326,8 @@ impl CSIEscape {
             // ECH -- Erase <n> char
             b'X' => {
                 DEFAULT!(self.arg[0], 1);
-                state.tclearregion(state.c.x, state.c.y, state.c.x + (self.arg[0] - 1) as usize, state.c.y);
+                let n = (self.arg[0] - 1).max(0) as usize;
+                state.tclearregion(state.c.x, state.c.y, state.c.x + n, state.c.y);
             }
 
             // DCH -- Delete <n> char
