@@ -1110,7 +1110,7 @@ impl TermState {
                     // SRM -- Send/Receive Mode (12)
                     // Set: local echo off. Reset: local echo on.
                     12 => {
-                        self.mode.set(TermMode::Echo, set);
+                        self.mode.set(TermMode::Echo, !set);
                     }
 
                     // LNM -- Line Feed/New Line Mode (20)
