@@ -170,7 +170,7 @@ impl Term {
 
         /* This is similar to how the kernel handles ONLCR for ttys */
         while n > 0 {
-            if buffer[0] == b'\r' {
+            if buffer[start] == b'\r' {
                 next = 1;
                 self.ttywriteraw_pty(b"\r\n", 2);
             } else {
