@@ -1349,7 +1349,8 @@ impl TermState {
                 4 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_UNDERLINE;
 
-                    if i + 1 < l {
+
+                    if i + 1 < l && sub[i + 1]  {
                         i += 1;
                         let idx = attr[i] as u32;
 
@@ -1365,6 +1366,9 @@ impl TermState {
                         } else {
                             eprintln!("erresc: unknown underline style {}", idx);
                         }
+                    } else {
+                        let g = &mut self.c.attr;
+                        tsetdecorstyle(g, 1);
                     }
                 }
 
