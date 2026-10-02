@@ -98,8 +98,10 @@ impl StrEscape {
         };
 
         match self.type_ {
-            // OSC -- Operating System Command
+            // OSC -- Operating System Command: ESC ] Ps ; Pt ST (or BEL)
+            // Replies to queries end with the same terminator as the request.
             b']' => match par {
+                // OSC 0 ; Pt -- Set icon name and window title to Pt
                 0 => {
                     if narg > 1 {
                         // TODO:
@@ -108,6 +110,7 @@ impl StrEscape {
                     }
                     return;
                 }
+                // OSC 1 ; Pt -- Set icon name to Pt
                 1 => {
                     if narg > 1 {
                         // TODO:
@@ -115,6 +118,7 @@ impl StrEscape {
                     }
                     return;
                 }
+                // OSC 2 ; Pt -- Set window title to Pt
                 2 => {
                     if narg > 1 {
                         // TODO:
@@ -122,6 +126,9 @@ impl StrEscape {
                     }
                     return;
                 }
+                // OSC 52 ; Pc ; Pd -- Manipulate selection data
+                // - Pc: selections to use (c = clipboard, p = primary, ...).
+                // - Pd: base64 data to set, or ? to query.
                 52 => {
                     // TODO:
                     // if (narg > 2 && allowwindowops) {
@@ -135,11 +142,14 @@ impl StrEscape {
                     // }
                     return;
                 }
-                /* Clear Hyperlinks */
+                // OSC 8 ; params ; URI -- Hyperlink. An empty URI ends the link. Ignored.
                 8 => {
                     return;
                 }
 
+                // OSC 10/11/12 ; Pt -- Set the default foreground / background / cursor color
+                // - Pt: color spec (name, #rrggbb, rgb:rr/gg/bb), or ? to query.
+                // Query reply: OSC Ps ; rgb:rrrr/gggg/bbbb ST.
                 10 | 11 | 12 if narg >= 2 => {
                     let p = self.args[1];
 
@@ -175,7 +185,9 @@ impl StrEscape {
                     return;
                 }
 
-                // color set
+                // OSC 4 ; c ; spec -- Set palette color c to spec, or ? to query it.
+                // Query reply: OSC 4 ; c ; rgb:rrrr/gggg/bbbb ST.
+                // OSC 104 ; c -- Reset palette color c. No argument resets the whole palette.
                 4 | 104 => 'color_set: {
                     let mut p = null();
 
@@ -225,14 +237,15 @@ impl StrEscape {
                 }
             },
 
-            // old title set compatibility
+            // Set title (screen/tmux): ESC k Pt ST
             b'k' => {
                 // TODO
                 // xsettitle(strescseq.args[0]);
                 return;
             }
 
-            // DCS -- Device Control String
+            // DCS -- Device Control String: ESC P <params> <final> <data> ST
+            // Only sixel graphics (final q) are recognized, see `Term::dcshandle`.
             b'P' => {
                 let term_mode = &mut state.mode;
 
@@ -243,12 +256,13 @@ impl StrEscape {
                 }
             }
 
-            // APC -- Application Program Command
+            // APC -- Application Program Command: ESC _ Pt ST
+            // Used by the kitty graphics protocol (ESC _ G <keys> ; <payload> ST).
             b'_' => {
                 // TODO: implement APC handling
             }
 
-            // PM -- Privacy Message
+            // PM -- Privacy Message: ESC ^ Pt ST. Ignored.
             b'^' => {
                 return;
             }

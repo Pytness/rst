@@ -93,27 +93,37 @@ impl CSIEscape {
         };
 
         match self.mode[0] {
-            // ICH -- Insert <n> blank char
+            // ICH -- Insert Characters: CSI Ps @
+            // - Ps: blank characters to insert at the cursor, shifting the rest of the line right. Default 1.
             b'@' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tinsertblank(self.arg[0] as usize);
             }
 
-            // CUU -- Cursor <n> Up
+            // CUU -- Cursor Up: CSI Ps A
+            // - Ps: rows to move up. Default 1.
             b'A' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tmoveto(state.c.x, state.c.y.saturating_sub(self.arg[0] as usize));
             }
 
-            b'B' | // CUD -- Cursor <n> Down
-            b'e'   // VPR -- Cursor <n> Down
+            // CUD -- Cursor Down: CSI Ps B
+            // VPR -- Line Position Relative: CSI Ps e
+            // - Ps: rows to move down. Default 1.
+            b'B' | // CUD
+            b'e'   // VPR
             => {
                 DEFAULT!(self.arg[0], 1);
                 let y = state.c.y + self.arg[0].max(0) as usize;
                 state.tmoveto(state.c.x, y);
             }
 
-            // MC -- Media Copy
+            // MC -- Media Copy: CSI Ps i
+            // - Ps = 0: print the screen. Default.
+            // - Ps = 1: print the cursor line (DEC form: CSI ? 1 i).
+            // - Ps = 2: print the selection (st extension).
+            // - Ps = 4: turn off printer controller mode.
+            // - Ps = 5: turn on printer controller mode.
             b'i' => {
                 match self.arg[0] {
                     0 => state.tdump(),
@@ -125,14 +135,17 @@ impl CSIEscape {
                 }
             }
 
-            // dA -- Device Attributes
+            // DA -- Primary Device Attributes: CSI Ps c
+            // - Ps = 0: request the attributes. Default.
+            // Reply: VTIDEN, CSI ? 62 ; 4 c (VT220 with sixel graphics).
             b'c' => {
                 if self.arg[0] == 0 {
                     state.ttywrite_pty(VTIDEN, VTIDEN.len());
                 }
             }
 
-            // REP -- if last char is printable print it <n> more times
+            // REP -- Repeat: CSI Ps b
+            // - Ps: times to repeat the last printed graphic character. Default 1.
             b'b' => {
                 self.arg[0] = self.arg[0].max(1).min(65535);
 
@@ -143,53 +156,66 @@ impl CSIEscape {
                 }
             }
 
-            b'C' | // CUF -- Cursor <n> Forward
-            b'a'  // HPR -- Cursor <n> Forward
+            // CUF -- Cursor Forward: CSI Ps C
+            // HPR -- Character Position Relative: CSI Ps a
+            // - Ps: columns to move right. Default 1.
+            b'C' | // CUF
+            b'a'  // HPR
             => {
                 DEFAULT!(self.arg[0], 1);
                 let x = state.c.x + self.arg[0].max(0) as usize;
                 state.tmoveto(x, state.c.y);
             }
 
-            // CUB  -- Cursor <n> Backward
+            // CUB -- Cursor Backward: CSI Ps D
+            // - Ps: columns to move left. Default 1.
             b'D' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tmoveto(state.c.x.saturating_sub(self.arg[0] as usize), state.c.y);
             }
 
-            // CNL -- Cursor <n> Down and first col
+            // CNL -- Cursor Next Line: CSI Ps E
+            // - Ps: rows to move down, then go to the first column. Default 1.
             b'E' => {
                 DEFAULT!(self.arg[0], 1);
                 let y = state.c.y + self.arg[0].max(0) as usize;
                 state.tmoveto(0, y);
             }
 
-            // CPL -- Cursor <n> Up and first col
+            // CPL -- Cursor Preceding Line: CSI Ps F
+            // - Ps: rows to move up, then go to the first column. Default 1.
             b'F' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tmoveto(0, state.c.y - self.arg[0] as usize);
             }
 
-            // TBC -- Tabulation clear
+            // TBC -- Tab Clear: CSI Ps g
+            // - Ps = 0: clear the tab stop at the cursor column. Default.
+            // - Ps = 3: clear all tab stops.
             b'g' => {
                 match self.arg[0] {
-                    // clear current tab sotp
                     0 => state.tabs[state.c.x] = 0,
-                    // clear all the tabs
                     3 => state.tabs.iter_mut().for_each(|t| *t = 0),
                     _ =>  unknown(),
 
                 }
             }
 
-            b'G' | // CHA -- Move to <col>
+            // CHA -- Cursor Horizontal Absolute: CSI Ps G
+            // HPA -- Character Position Absolute: CSI Ps `
+            // - Ps: 1-based column. Default 1.
+            b'G' | // CHA
             b'`'   // HPA
             => {
                 DEFAULT!(self.arg[0], 1);
                 state.tmoveto(self.arg[0] as usize - 1, state.c.y);
             }
 
-            b'H' | // CUP -- Move to <row> <column>
+            // CUP -- Cursor Position: CSI Ps ; Ps H
+            // HVP -- Horizontal and Vertical Position: CSI Ps ; Ps f
+            // - Ps 1: 1-based row, relative to the top margin in origin mode. Default 1.
+            // - Ps 2: 1-based column. Default 1.
+            b'H' | // CUP
             b'f'   // HVP
             => {
                 DEFAULT!(self.arg[0], 1);
@@ -197,35 +223,37 @@ impl CSIEscape {
                 state.tmoveato(self.arg[1] as usize - 1, self.arg[0] as usize - 1);
             }
 
-            // CHT -- CUrsor Forwar Tabulation <n> tab stops
+            // CHT -- Cursor Forward Tabulation: CSI Ps I
+            // - Ps: tab stops to move forward. Default 1.
             b'I' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tputtab(self.arg[0] as isize);
             }
 
-            // ED -- Clear screen
+            // ED -- Erase in Display: CSI Ps J
+            // - Ps = 0: erase from the cursor to the end of the screen. Default.
+            // - Ps = 1: erase from the start of the screen to the cursor.
+            // - Ps = 2: erase the whole screen.
+            // - Ps = 3: erase the saved lines (scrollback).
+            // - Ps = 6: delete all sixel images (non-standard).
             b'J' => {
                 match self.arg[0] {
-                    // below
                     0 => {
                         state.tclearregion(state.c.x, state.c.y, maxcol - 1, state.c.y);
                         if state.c.y < state.row - 1 {
                             state.tclearregion(0, state.c.y + 1, maxcol - 1, state.row - 1);
                         }
                     }
-                    // above
                     1 => {
                         if state.c.y > 0 {
                             state.tclearregion(0, 0, maxcol - 1, state.c.y - 1);
                         }
                         state.tclearregion(0, state.c.y, state.c.x, state.c.y);
                     }
-                    // screen
                     2 => {
                         state.tclearregion(0, 0, maxcol - 1, state.row - 1);
                         state.tdeleteimages();
                     }
-                    // scrollback
                     3 => {
                         // for (im = term.images; im; im = next) {
                         // 	next = im->next;
@@ -234,7 +262,6 @@ impl CSIEscape {
                         // 	}
                         // }
                     }
-                    // sixels
                     6 => {
                         state.tdeleteimages();
                         state.tfulldirt();
@@ -242,20 +269,27 @@ impl CSIEscape {
                     _ => unknown(),
                 }
             }
-            // EL -- Clear line
+
+            // EL -- Erase in Line: CSI Ps K
+            // - Ps = 0: erase from the cursor to the end of the line. Default.
+            // - Ps = 1: erase from the start of the line to the cursor.
+            // - Ps = 2: erase the whole line.
             b'K' => {
                 match self.arg[0] {
-                    // right
                     0 => state.tclearregion(state.c.x, state.c.y, maxcol - 1, state.c.y),
-                    // left
                     1 => state.tclearregion(0, state.c.y, state.c.x, state.c.y),
-                    // all
                     2 => state.tclearregion(0, state.c.y, maxcol - 1, state.c.y),
                     _ => {}
                 }
             }
 
-            // Su -- Scroll <n> line up ; XTSMGRAPHICS
+            // SU -- Scroll Up: CSI Ps S
+            // - Ps: lines to scroll up inside the scroll region. Default 1.
+            //
+            // XTSMGRAPHICS -- Set or Request Graphics Attribute: CSI ? Pi ; Pa ; Pv S
+            // - Pi = 1: number of color registers. Pi = 2: sixel geometry in pixels. Pi = 3: ReGIS geometry.
+            // - Pa = 1: read. Pa = 2: reset to default. Pa = 3: set to Pv. Pa = 4: read the maximum.
+            // Reply: CSI ? Pi ; Ps ; Pv S, where Ps = 0 success, 1 bad Pi, 2 bad Pa, 3 failure.
             b'S' => {
                 if self.private {
                     if self.narg > 1 {
@@ -300,74 +334,86 @@ impl CSIEscape {
                 state.tscrollup(state.top, self.arg[0] as usize);
             }
 
-            // SD -- Scroll <n> line down
+            // SD -- Scroll Down: CSI Ps T
+            // - Ps: lines to scroll down inside the scroll region. Default 1.
             b'T' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tscrolldown(state.top, self.arg[0] as usize);
             }
 
-            // IL -- Insert <n> blank line(s)
+            // IL -- Insert Lines: CSI Ps L
+            // - Ps: blank lines to insert at the cursor row, inside the scroll region. Default 1.
             b'L' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tinsertblankline(self.arg[0] as usize);
             }
 
-            // RM -- Reset Mode
+            // RM -- Reset Mode: CSI Pm l
+            // DECRST -- DEC Private Mode Reset: CSI ? Pm l
+            // - Pm: modes to reset, see `TermState::tsetmode`.
             b'l' => {
                 state.tsetmode(self.private, false, &self.arg, self.narg);
             },
 
-            // DL -- Delete Mn> lines
+            // DL -- Delete Lines: CSI Ps M
+            // - Ps: lines to delete at the cursor row, inside the scroll region. Default 1.
             b'M' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tdeleteline(self.arg[0] as usize);
             }
 
-            // ECH -- Erase <n> char
+            // ECH -- Erase Characters: CSI Ps X
+            // - Ps: characters to erase from the cursor, without shifting the line. Default 1.
             b'X' => {
                 DEFAULT!(self.arg[0], 1);
                 let n = (self.arg[0] - 1).max(0) as usize;
                 state.tclearregion(state.c.x, state.c.y, state.c.x + n, state.c.y);
             }
 
-            // DCH -- Delete <n> char
+            // DCH -- Delete Characters: CSI Ps P
+            // - Ps: characters to delete at the cursor, shifting the rest of the line left. Default 1.
             b'P' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tdeletechar(self.arg[0] as usize);
             }
 
-            // CBT -- Cursor Backward Tabulation <n> tab stops
+            // CBT -- Cursor Backward Tabulation: CSI Ps Z
+            // - Ps: tab stops to move back. Default 1.
             b'Z' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tputtab(-self.arg[0] as isize);
             }
 
-            // VPA -- Move to <row>
+            // VPA -- Line Position Absolute: CSI Ps d
+            // - Ps: 1-based row. Default 1.
             b'd' => {
                 DEFAULT!(self.arg[0], 1);
                 state.tmoveto(state.c.x, self.arg[0] as usize - 1);
             }
 
-            // SM -- Set terminal mode
+            // SM -- Set Mode: CSI Pm h
+            // DECSET -- DEC Private Mode Set: CSI ? Pm h
+            // - Pm: modes to set, see `TermState::tsetmode`.
             b'h' => {
                 state.tsetmode(self.private, true, &self.arg, self.narg);
             }
 
-            // SGR - Terminal attribute (color)
+            // SGR -- Select Graphic Rendition: CSI Pm m
+            // - Pm: attributes to apply, see `TermState::tsetattr`. Default 0 (reset).
             b'm' => {
                 state.tsetattr(&self.arg, self.narg);
             }
 
-            // DSR -- Device Status Report
+            // DSR -- Device Status Report: CSI Ps n
+            // - Ps = 5: status report. Reply: CSI 0 n (OK).
+            // - Ps = 6: cursor position report (CPR). Reply: CSI r ; c R, 1-based.
             b'n' => {
                 let term = unsafe {&mut *state._term_ptr};
                 match self.arg[0] {
-                    // Status Report "OK" `0n`
                     5 => {
                         const TEXT: &[u8] = b"\x1b[0n";
                         term.ttywrite(TEXT, TEXT.len(), false);
                     },
-                    // Report Cursor Position (CPR) "<row>;<column>R"
                     6 => {
                         let mut buffer = [0u8; 40];
                         let len = snprintf!(buffer, b"\x1b[%i;%iR\0", state.c.y + 1, state.c.x + 1);
@@ -378,7 +424,10 @@ impl CSIEscape {
                 }
             }
 
-            // DECSTBM -- Set scrolling region
+            // DECSTBM -- Set Top and Bottom Margins: CSI Ps ; Ps r
+            // - Ps 1: 1-based top row. Default 1.
+            // - Ps 2: 1-based bottom row. Default: last row.
+            // Moves the cursor to the home position.
             b'r' => {
                 if self.private {
                     unknown();
@@ -390,12 +439,14 @@ impl CSIEscape {
                 }
             }
 
-            // DECSC -- Save Cursor Position (ANIS.SYS)
+            // SCOSC -- Save Cursor: CSI s
+            // Saves the cursor like DECSC (ESC 7).
             b's' => {
                 state.tcursor(CursorMovement::CursorSave);
             }
 
-            // DECRC -- Restore cursor position (ANIS.SYS)
+            // SCORC -- Restore Cursor: CSI u
+            // Restores the cursor like DECRC (ESC 8).
             b'u' => {
                 if self.private {
                     unknown();
@@ -406,7 +457,11 @@ impl CSIEscape {
 
             b' ' => {
                 match self.mode[1] {
-                    // DECSCUSR -- Set Cursor Style
+                    // DECSCUSR -- Set Cursor Style: CSI Ps SP q
+                    // - Ps = 0 or 1: blinking block. Default.
+                    // - Ps = 2: steady block.
+                    // - Ps = 3: blinking underline. Ps = 4: steady underline.
+                    // - Ps = 5: blinking bar. Ps = 6: steady bar.
                     b'q' => {
                         // TODO: implement this
                         win.set_cursor(self.arg[0]);
@@ -420,7 +475,9 @@ impl CSIEscape {
 
             b'>' => {
                 match self.mode[1] {
-                    // XTVERSION -- Print terminal name and version
+                    // XTVERSION -- Report Terminal Name and Version: CSI > Ps q
+                    // - Ps = 0: request the version. Default.
+                    // Reply: DCS > | text ST.
                     b'q' => {
                         // TODO: implement better version reporting
                         const TEXT: &[u8] = b"\x1bP>|rst(0.1)\x1b\\";
@@ -430,18 +487,19 @@ impl CSIEscape {
                 }
             }
 
-            // XTWINOPS -- Window manipulation
+            // XTWINOPS -- Window Manipulation: CSI Ps ; Ps ; Ps t
+            // - Ps = 14: report the text area size in pixels. Reply: CSI 4 ; height ; width t.
+            // - Ps = 16: report the character cell size in pixels. Reply: CSI 6 ; height ; width t.
+            // - Ps = 18: report the text area size in characters. Reply: CSI 8 ; rows ; cols t.
             b't' => {
                 let term = unsafe {&mut *state._term_ptr};
                 let mut buffer = [0u8; 40];
                 match self.arg[0] {
-                    // Report text area size in pixels
                     14 => {
                         let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", state.pixh, state.pixw);
                         term.ttywrite(&buffer, len as usize, false);
                     }
 
-                    // Report character cell sie in pixels
                     16 => {
                         let len = snprintf!(
                             buffer,
@@ -452,7 +510,6 @@ impl CSIEscape {
                         term.ttywrite(&buffer, len as usize, false);
                     }
 
-                    // Report the size of the text area in characters
                     18 => {
                         let len = snprintf!(buffer, b"\x1b[8;%i;%it\0", state.row, state.col);
                         term.ttywrite(&buffer, len as usize, false);
@@ -462,19 +519,22 @@ impl CSIEscape {
                 }
             }
 
-            // DSR-EXT -- Device Status Report (Extended)
+            // DECRQM -- Request Mode: CSI Ps $ p (ANSI) or CSI ? Ps $ p (DEC private)
+            // - Ps: mode to query.
+            // Reply (DECRPM): CSI ? Ps ; Pm $ y, where Pm = 0 not recognized, 1 set, 2 reset,
+            // 3 permanently set, 4 permanently reset.
             b'$' => {
                 match self.mode[1] {
                     b'p' => {
                         let feature_mode = match self.arg[0] {
-                            // Synchronized updates
+                            // Synchronized output
                             2026 => {
                                 // Supported and screen updates are shown as usual
                                 // (e.g. as soon as they arrive)
                                 2
                             }
 
-                            // In Band Resize Notifications
+                            // In-band resize notifications
                             2048 => {
                                 if win.mode.contains(WinMode::ResizeNotification) {
                                     1

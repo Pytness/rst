@@ -506,30 +506,36 @@ impl Term {
         let mut interrupt_sequence = false;
 
         match u {
-            // HT
+            // HT -- Horizontal Tab (0x09)
+            // Moves the cursor to the next tab stop, or the last column if there is none.
             b'\t' => self.state.tputtab(1),
 
-            // BS (\b)
+            // BS -- Backspace (0x08)
+            // Moves the cursor one column left. Does not wrap to the previous line.
             0x08 => {
-                // BS
                 let x = self.state.c.x;
                 let y = self.state.c.y;
                 self.state.tmoveto(x.saturating_sub(1), y);
             }
 
-            // CR
+            // CR -- Carriage Return (0x0D)
+            // Moves the cursor to the first column.
             b'\r' => {
                 self.state.tmoveto(0, self.state.c.y);
             }
 
-            0x0C  | // LF (\f)
-            0x0B  | // VT (\v)
-            b'\n'   // LF (\n)
+            // LF -- Line Feed (0x0A), VT -- Vertical Tab (0x0B), FF -- Form Feed (0x0C)
+            // All three move the cursor down one row, scrolling at the bottom margin.
+            // With LNM (mode 20) set, they also move to the first column.
+            0x0C  | // FF
+            0x0B  | // VT
+            b'\n'   // LF
             => {
                 self.state.tnewline(self.state.mode.contains(TermMode::Crlf));
             }
 
-            // BEL (\a)
+            // BEL -- Bell (0x07)
+            // Terminates an OSC/DCS/APC/PM string if one is open, otherwise rings the bell.
             0x07 => {
                 if self.esc.contains(EscapeState::ESC_STR_END) {
                     self.strescseq.term = STR_TERM_BEL.as_ptr();
@@ -542,23 +548,27 @@ impl Term {
                 interrupt_sequence = true;
             }
 
-            // ESC
+            // ESC -- Escape (0x1B)
+            // Starts an escape sequence, aborting any CSI sequence in progress.
             0x1B => {
                 self.csireset();
                 self.esc.remove(EscapeState::ESC_CSI | EscapeState::ESC_ALTCHARSET | EscapeState::ESC_TEST);
                 self.esc.insert(EscapeState::ESC_START);
             }
 
-            // SO (LS1 -- Locking shift 1)
+            // SO -- Shift Out (0x0E), also LS1 -- Locking Shift 1
+            // Invokes the G1 character set into GL.
             0x0e => {
                 self.state.charset = 1;
             }
-            // SI (LS0 -- Locking shift 0)
+            // SI -- Shift In (0x0F), also LS0 -- Locking Shift 0
+            // Invokes the G0 character set into GL.
             0x0f => {
                 self.state.charset = 0;
             }
 
-            // SUB
+            // SUB -- Substitute (0x1A)
+            // Cancels the current sequence and shows an error character (`?`) at the cursor.
             0x1A => {
                 let g = self.state.c.attr.clone();
                 self.state.tsetchar('?', &g, self.state.c.x, self.state.c.y);
@@ -566,81 +576,86 @@ impl Term {
                 interrupt_sequence = true;
             }
 
-            // CAN
+            // CAN -- Cancel (0x18)
+            // Cancels the current sequence without output.
             0x18 => {
                 self.csireset();
                 interrupt_sequence = true;
             }
 
-            0x05 | // ENQ
-            0x00 | // NUL
-            0x11 | // XON
-            0x13 | // XOFF
-            0x7F   // DEL
+            0x05 | // ENQ -- Enquiry (answerback)
+            0x00 | // NUL -- Null
+            0x11 | // XON -- Device Control 1, resume transmission
+            0x13 | // XOFF -- Device Control 3, stop transmission
+            0x7F   // DEL -- Delete
             => {
                 // ignored
             }
 
-            0x80 | // TODO: PAD
-            0x81 | // TODO: HOP
-            0x82 | // TODO: BPH
-            0x83 | // TODO: NBH
-            0x84   // TODO: IND
+            0x80 | // PAD -- Padding Character (TODO)
+            0x81 | // HOP -- High Octet Preset (TODO)
+            0x82 | // BPH -- Break Permitted Here (TODO)
+            0x83 | // NBH -- No Break Here (TODO)
+            0x84   // IND -- Index (TODO)
             => {
                 interrupt_sequence = true;
             }
 
-            // NEL -- Next line
+            // NEL -- Next Line (0x85)
+            // Moves the cursor to the first column of the next row, scrolling at the bottom margin.
             0x85 => {
                 self.state.tnewline(true);
                 interrupt_sequence = true;
             },
 
-            0x86 | // TODO:  SSA
-            0x87   // TODO:  ESA
+            0x86 | // SSA -- Start of Selected Area (TODO)
+            0x87   // ESA -- End of Selected Area (TODO)
             => {
                 interrupt_sequence = true;
             }
 
-            // HTS -- Horizontal tab stop
+            // HTS -- Horizontal Tab Set (0x88)
+            // Sets a tab stop at the cursor column.
             0x88 => {
                 self.state.tabs[self.state.c.x] = 1;
                 interrupt_sequence = true;
             }
 
-            0x89 | // TODO: HTJ
-            0x8a | // TODO: VTS
-            0x8b | // TODO: PLD
-            0x8c | // TODO: PLU
-            0x8d | // TODO: RI
-            0x8e | // TODO: SS2
-            0x8f | // TODO: SS3
-            0x91 | // TODO: PU1
-            0x92 | // TODO: PU2
-            0x93 | // TODO: STS
-            0x94 | // TODO: CCH
-            0x95 | // TODO: MW
-            0x96 | // TODO: SPA
-            0x97 | // TODO: EPA
-            0x98 | // TODO: SOS
-            0x99   // TODO: SGCI
+            0x89 | // HTJ -- Character Tabulation with Justification (TODO)
+            0x8a | // VTS -- Line Tabulation Set (TODO)
+            0x8b | // PLD -- Partial Line Forward (TODO)
+            0x8c | // PLU -- Partial Line Backward (TODO)
+            0x8d | // RI -- Reverse Index (TODO)
+            0x8e | // SS2 -- Single Shift 2: G2 for the next character only (TODO)
+            0x8f | // SS3 -- Single Shift 3: G3 for the next character only (TODO)
+            0x91 | // PU1 -- Private Use 1 (TODO)
+            0x92 | // PU2 -- Private Use 2 (TODO)
+            0x93 | // STS -- Set Transmit State (TODO)
+            0x94 | // CCH -- Cancel Character (TODO)
+            0x95 | // MW -- Message Waiting (TODO)
+            0x96 | // SPA -- Start of Protected Area (TODO)
+            0x97 | // EPA -- End of Protected Area (TODO)
+            0x98 | // SOS -- Start of String (TODO)
+            0x99   // SGCI -- Single Graphic Character Introducer (TODO)
             => {
                 interrupt_sequence = true;
             }
 
-            // DECID -- Identify Terminal
+            // DECID -- Identify Terminal (0x9A)
+            // Obsolete form of DA (CSI c). Reply: VTIDEN.
             0x9a => {
                 self.ttywrite(VTIDEN, VTIDEN.len(), false);
                 interrupt_sequence = true;
             }
 
-            0x9b | // TODO: CSI
-            0x9c   // TODO: ST
+            0x9b | // CSI -- Control Sequence Introducer, 8-bit form of ESC [ (TODO)
+            0x9c   // ST -- String Terminator, 8-bit form of ESC \ (TODO)
             => {
                 interrupt_sequence = true;
             }
 
 
+            // 8-bit forms of ESC P, ESC ], ESC ^ and ESC _. Each starts a string terminated by ST or BEL.
             0x90 | // DCS -- Device Control String
             0x9d | // OSC -- Operating System Command
             0x9e | // PM -- Privacy Message
@@ -664,7 +679,9 @@ impl Term {
 
     fn tdefutf8(&mut self, u: char) {
         match u {
+            // ESC % G -- Select UTF-8 character set
             'G' => self.state.mode.insert(TermMode::Utf8),
+            // ESC % @ -- Select default character set (ISO 8859-1)
             '@' => self.state.mode.remove(TermMode::Utf8),
             _ => {}
         }
@@ -691,7 +708,8 @@ impl Term {
     }
 
     fn tdectest(&mut self, c: char) {
-        // DEC screen alignment test
+        // DECALN -- Screen Alignment Pattern: ESC # 8
+        // Fills the screen with `E`.
         if c == '8' {
             for y in 0..self.state.row {
                 for x in 0..self.state.col {
@@ -705,23 +723,27 @@ impl Term {
     /// more characters for this sequence, otherwise false
     fn eschandle(&mut self, u: char) -> bool {
         match u {
+            // CSI -- Control Sequence Introducer: ESC [
             '[' => {
                 self.esc.insert(EscapeState::ESC_CSI);
                 return false;
             }
+            // DEC line attributes and tests: ESC # Pc, see `tdectest`.
             '#' => {
                 self.esc.insert( EscapeState::ESC_TEST);
                 return false;
             }
+            // Select character set coding: ESC % Pc, see `tdefutf8`.
             '%' => {
                 self.esc.insert(EscapeState::ESC_UTF8);
                 return false;
             }
+            // Each starts a string terminated by ST (ESC \) or BEL.
             'P' | // DCS -- Device Control String
             '_' | // APC -- Application Program Command
             '^' | // PM -- Privacy Message
             ']' | // OSC -- Operating System Command
-            'k'   // TODO: check if we can remove this: old title set compatibility
+            'k'   // Set title (screen/tmux): ESC k title ST. TODO: check if we can remove this
             => {
                 if u == 'P' {
                     self.esc.insert(EscapeState::ESC_DCS);
@@ -730,21 +752,27 @@ impl Term {
                 self.tstrsequence(u as u8);
                 return false;
             }
-            'n' | // LS2 -- Locking shift 2
-            'o'   // LS3 -- Locking shift 3
+            // Invoke a character set into GL until changed.
+            'n' | // LS2 -- Locking Shift 2: invoke G2
+            'o'   // LS3 -- Locking Shift 3: invoke G3
             => {
                 self.state.charset = 2 + (u as u8 - b'n') as usize;
             }
-            '('| // GZD4 -- set primary charset G0
-            ')'| // G1D4 -- set secondary charset G1
-            '*'| // G2D4 -- set tertiary charset G2
-            '+'  // G3D4 -- set quaternary charset G3
+            // SCS -- Designate a 94-character set: ESC <slot> C
+            // - C = 0: DEC Special Character and Line Drawing Set.
+            // - C = B: US ASCII.
+            // See `tdeftran`.
+            '('| // GZD4 -- designate G0
+            ')'| // G1D4 -- designate G1
+            '*'| // G2D4 -- designate G2
+            '+'  // G3D4 -- designate G3
             => {
                 self.state.icharset = (u as u8 - b'(') as u32;
                 self.esc.insert(EscapeState::ESC_ALTCHARSET);
                 return false;
             }
-            // IND -- Linefeed
+            // IND -- Index: ESC D
+            // Moves the cursor down one row, scrolling up at the bottom margin.
             'D' => {
                 if self.state.c.y == self.state.bot {
                     self.state.tscrollup(self.state.top, 1);
@@ -752,15 +780,18 @@ impl Term {
                     self.state.tmoveto(self.state.c.x, self.state.c.y + 1);
                 }
             }
-            // NEL -- Next line
+            // NEL -- Next Line: ESC E
+            // Moves the cursor to the first column of the next row, scrolling at the bottom margin.
             'E' => {
                 self.state.tnewline(true); // always go to first col
             }
-            // HTS -- Horizontal tab stop
+            // HTS -- Horizontal Tab Set: ESC H
+            // Sets a tab stop at the cursor column.
             'H' => {
                 self.state.tabs[self.state.c.x] = 1;
             }
-            // RI -- Reverse index
+            // RI -- Reverse Index: ESC M
+            // Moves the cursor up one row, scrolling down at the top margin.
             'M' => {
                 if self.state.c.y == self.state.top {
                     self.state.tscrolldown(self.state.top, 1);
@@ -768,34 +799,39 @@ impl Term {
                     self.state.tmoveto(self.state.c.x, self.state.c.y.saturating_sub(1));
                 }
             }
-            // DECID -- Identify Terminal
+            // DECID -- Identify Terminal: ESC Z
+            // Obsolete form of DA (CSI c). Reply: VTIDEN.
             'Z' => {
                 self.ttywrite(VTIDEN, VTIDEN.len(), false);
             }
-            // RIS -- Reset to initial state
+            // RIS -- Reset to Initial State: ESC c
+            // Full reset: screen, modes, tab stops, charsets, title and colors.
             'c' => {
                 self.state.treset();
                 self.resettitle();
                 self.xloadcols();
                 self.xsetmode(false, WinMode::Hide);
             }
-            // DECKPAM – application keypad
+            // DECKPAM -- Keypad Application Mode: ESC =
             '=' => {
                 self.xsetmode(true, WinMode::AppKeypad);
             }
-            // DECPNM -- Normal keypad
+            // DECKPNM -- Keypad Numeric Mode: ESC >
             '>' => {
                 self.xsetmode(false, WinMode::AppKeypad);
             }
-            // DECSC -- Save Cursor
+            // DECSC -- Save Cursor: ESC 7
+            // Saves the position, attributes, wrap state and origin mode.
             '7' => {
                 self.state.tcursor(CursorMovement::CursorSave);
             }
-            // DESRC -- Restore Cursor
+            // DECRC -- Restore Cursor: ESC 8
+            // Restores the state saved by DECSC.
             '8' => {
                 self.state.tcursor(CursorMovement::CursorLoad);
             }
-            // ST -- String terminator
+            // ST -- String Terminator: ESC \
+            // Ends an OSC/DCS/APC/PM string.
             '\\' => {
                 if self.esc.contains(EscapeState::ESC_STR_END) {
                     self.strescseq.term = STR_TERM_ST.as_ptr();
@@ -825,7 +861,10 @@ impl Term {
     // TODO: implement this
     fn dcshandle(&mut self) {
         match self.csiescseq.mode[0] {
-            // DECDIXEL
+            // DECSIXEL -- Sixel graphics: DCS P1 ; P2 ; P3 q <data> ST
+            // - P1: pixel aspect ratio (obsolete, superseded by the raster attributes).
+            // - P2 = 1: transparent background (pixels with color 0 keep the current content).
+            // - P3: horizontal grid size (ignored).
             b'q' => {
                 let _transparent = self.csiescseq.narg >= 2 && self.csiescseq.arg[1] == 1;
                 let mut r: u8 = 0;

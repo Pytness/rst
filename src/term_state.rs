@@ -1094,23 +1094,27 @@ impl TermState {
         for arg in _args {
             if !private {
                 match arg {
-                    // Error (IGNORED)
+                    // 0 -- not a mode (ignored)
                     0 => {}
 
-                    // kdb lock
+                    // KAM -- Keyboard Action Mode (2)
+                    // Set: lock the keyboard. Reset: unlock.
                     2 => term.xsetmode(set, WinMode::KbdLock),
 
-                    // IRM - Insertion-replacement
+                    // IRM -- Insert/Replace Mode (4)
+                    // Set: insert, shifting the line right. Reset: replace.
                     4 => {
                         self.mode.set(TermMode::Insert, set);
                     }
 
-                    // SRM - Send/receive
+                    // SRM -- Send/Receive Mode (12)
+                    // Set: local echo off. Reset: local echo on.
                     12 => {
                         self.mode.set(TermMode::Echo, set);
                     }
 
-                    // LNM - Linefeed/new line
+                    // LNM -- Line Feed/New Line Mode (20)
+                    // Set: LF/VT/FF also do CR, and Return sends CR LF. Reset: plain line feed.
                     20 => {
                         self.mode.set(TermMode::Crlf, set);
                     }
@@ -1121,48 +1125,54 @@ impl TermState {
                 }
             } else {
                 match arg {
-                    // DECCKM -- Cursor key
+                    // DECCKM -- Application Cursor Keys (1)
+                    // Set: cursor keys send SS3 (ESC O). Reset: they send CSI.
                     1 => {
                         term.xsetmode(set, WinMode::AppCursor);
                     }
 
-                    // DECSCNM -- Reverse video
+                    // DECSCNM -- Reverse Video (5)
+                    // Set: swap the default foreground and background.
                     5 => {
                         term.xsetmode(set, WinMode::Reverse);
                     }
 
-                    // DECOM -- Origin
+                    // DECOM -- Origin Mode (6)
+                    // Set: cursor addressing is relative to the scroll region. Homes the cursor.
                     6 => {
                         self.c.state.set(CursorState::Origin, set);
                         self.tmoveto(0, 0);
                     }
 
-                    // DECAWM -- Auto wrap
+                    // DECAWM -- Auto-Wrap Mode (7)
+                    // Set: printing past the last column wraps to the next line.
                     7 => {
                         self.mode.set(TermMode::Wrap, set);
                     }
 
 
-                    0  | // Error (IGNORED)
-                    2  | // DECANM -- ANSI/VT52 (IGNORED)
-                    3  | // DECCOLM -- Column  (IGNORED)
-                    4  | // DECSCLM -- Scroll (IGNORED)
-                    8  | // DECARM -- Auto repeat (IGNORED)
-                    18 | // DECPFF -- Printer feed (IGNORED)
-                    19 | // DECPEX -- Printer extent (IGNORED)
-                    42 | // DECNRCM -- National characters (IGNORED)
-                    12   // att610 -- Start blinking cursor (IGNORED)
+                    // Ignored modes.
+                    0  | // not a mode
+                    2  | // DECANM -- ANSI/VT52 Mode
+                    3  | // DECCOLM -- 132 Column Mode
+                    4  | // DECSCLM -- Smooth Scroll
+                    8  | // DECARM -- Auto-Repeat Keys
+                    18 | // DECPFF -- Print Form Feed
+                    19 | // DECPEX -- Print Extent (full screen)
+                    42 | // DECNRCM -- National Replacement Character Sets
+                    12   // att610 -- Blinking Cursor
                        => {}
 
-                    // DECTCEM -- Text Cursor Enable Mode
+                    // DECTCEM -- Text Cursor Enable Mode (25)
+                    // Set: show the cursor. Reset: hide it.
                     25 => {
                         term.xsetmode(!set, WinMode::Hide);
                     }
 
-                    // x10 mouse compatibility mode (IGNORED due to using wayland)
+                    // X10 mouse reporting (9): report button presses only, without modifiers. Ignored.
                     9 => {}
 
-                    // 1000: report button press
+                    // X11 mouse reporting (1000): report button presses and releases.
                     1000 => {
                         // TODO: `xsetpointermotion(0);`
                         // seems like x11 specific code, so we can ignore it for now
@@ -1172,37 +1182,43 @@ impl TermState {
                         term.xsetmode(set, WinMode::MouseButton);
                     }
 
-                    // 1002: report motion on button press
+                    // Cell motion mouse tracking (1002): also report motion while a button is held.
                     1002 => {
                         term.xsetmode(false, WinMode::MODE_MOUSE);
                         term.xsetmode(set, WinMode::MouseMotion);
                     }
 
-                    // 1003: enable all mouse motions
+                    // All motion mouse tracking (1003): report all motion, with or without buttons.
                     1003 => {
                         term.xsetmode(false, WinMode::MODE_MOUSE);
                         term.xsetmode(set, WinMode::MouseMany);
                     }
 
-                    // 1004: send focus events to tty
+                    // Focus reporting (1004): send CSI I on focus in and CSI O on focus out.
                     1004 => {
                         term.xsetmode(set, WinMode::Focus);
                     }
 
-                    // 1006: extended reporting mode
+                    // SGR mouse mode (1006): encode reports as CSI < b ; x ; y M/m instead of CSI M Cb Cx Cy.
                     1006 => {
                         term.xsetmode(set, WinMode::MouseSGR);
                     }
 
+                    // Meta sends eight bits (1034): Alt sets the high bit of the key byte.
                     1034 => {
                         term.xsetmode(set, WinMode::EightBit);
                     }
 
 
 
-                    47   | // old code for swap screen
-                    1047 | // xterm's alternate screen
-                    1049   // xterm's alternate screen with cursor restoration
+                    // Alternate screen buffer.
+                    // - 47: switch buffers.
+                    // - 1047: switch buffers, clearing the alternate screen when leaving it.
+                    // - 1049: save the cursor (DECSC) and switch to a cleared alternate screen;
+                    //   reset switches back and restores the cursor (DECRC).
+                    47   |
+                    1047 |
+                    1049
                     => {
 
                         println!("ALTSCREEEEEEN tsetmode: set/reset private mode {} to {}", arg, set);
@@ -1232,7 +1248,8 @@ impl TermState {
                         }
                     }
 
-                    1048  // only save/restore cursor
+                    // Save/restore cursor (1048): set saves like DECSC, reset restores like DECRC.
+                    1048
                     => {
                         let cursor_mode = match set {
                             true => CursorMovement::CursorSave,
@@ -1242,17 +1259,13 @@ impl TermState {
                         self.tcursor(cursor_mode);
                     }
 
-                    // bracketed paste mode
+                    // Bracketed paste (2004): wrap pasted text in CSI 200 ~ and CSI 201 ~.
                     2004 => {
                         term.xsetmode(set, WinMode::BracketedPaste);
                     }
 
-                    /* DECSET / DECRESET
-                     * An alternate and generally preferred pair of codes to begin and
-                     * end synchronized updates.
-                     *
-                     * Equivalent to BSU and ESU
-                     */
+                    // Synchronized output (2026): set begins an update (BSU), reset ends it (ESU).
+                    // While set, the screen keeps showing the last frame.
                     2026 => {
                         if set {
                             self.tsync_begin();
@@ -1261,24 +1274,27 @@ impl TermState {
                         }
                     }
 
+                    // In-band resize notifications (2048): on resize, send
+                    // CSI 48 ; rows ; cols ; height_px ; width_px t.
                     2048 => {
-                    // In-Band Window Resize Notifications
                         term.xsetmode(set, WinMode::ResizeNotification);
                     }
 
 
-                    // Not implemented mouse modes. See explanations here
-                    1001 | // Mouse highlihgt mode; can hang the terminal by design
-                    1005 | // UTF-8 mouse mode; will confuse applications not supporting UTF-8 and luit
-                    1015   // urxvt's mangled mouse mode; incompatible and can be mistaken for other control codes/
+                    // Ignored mouse modes.
+                    1001 | // Highlight mouse tracking; can hang the terminal by design
+                    1005 | // UTF-8 mouse mode; confuses applications that don't expect UTF-8
+                    1015   // urxvt mouse mode; can be mistaken for other control sequences
                     => {}
 
-                    // DECSDM -- Sixel Display Mode
+                    // DECSDM -- Sixel Display Mode (80)
+                    // Set: draw sixel images at the top-left corner without scrolling.
                     80 => {
                         self.mode.set(TermMode::SixelSDM, set);
                     }
 
-                    // sixel scrolling leaves cursor to right of graphic
+                    // Sixel cursor placement (8452): set leaves the cursor to the right of the image
+                    // instead of below it.
                     8452 => {
                         self.mode.set(TermMode::SixelCurRT, set);
                     }
@@ -1297,6 +1313,7 @@ impl TermState {
             let a = attr[i] as u32;
 
             match a {
+                // 0 -- Reset all attributes and colors
                 0 => {
                     self.c.attr.mode &= !(GlyphAttribute::ATTR_BOLD
                         | GlyphAttribute::ATTR_FAINT
@@ -1312,18 +1329,23 @@ impl TermState {
                     self.c.attr.decoration = DECOR_DEFAULT_COLOR;
                 }
 
+                // 1 -- Bold
                 1 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_BOLD;
                 }
 
+                // 2 -- Faint (decreased intensity)
                 2 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_FAINT;
                 }
 
+                // 3 -- Italic
                 3 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_ITALIC;
                 }
 
+                // 4 -- Underline. The style comes as a subparameter: 4:Ps
+                // - Ps = 0: no underline. 1: single. 2: double. 3: curly. 4: dotted. 5: dashed.
                 4 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_UNDERLINE;
 
@@ -1347,32 +1369,38 @@ impl TermState {
                 }
 
                 // TODO: implement slow and rapid blink
-                5 | // slow blink
-                6   // rapid blink
+                5 | // 5 -- Slow blink
+                6   // 6 -- Rapid blink
                 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_BLINK;
                 }
 
+                // 7 -- Inverse (swap foreground and background)
                 7 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_REVERSE;
                 }
 
+                // 8 -- Invisible (hidden)
                 8 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_INVISIBLE;
                 }
 
+                // 9 -- Crossed-out (strikethrough)
                 9 => {
                     self.c.attr.mode |= GlyphAttribute::ATTR_STRUCK;
                 }
 
+                // 22 -- Normal intensity (neither bold nor faint)
                 22 => {
                     self.c.attr.mode.remove(GlyphAttribute::ATTR_BOLD | GlyphAttribute::ATTR_FAINT);
                 }
 
+                // 23 -- Not italic
                 23 => {
                     self.c.attr.mode.remove(GlyphAttribute::ATTR_ITALIC);
                 }
 
+                // 24 -- Not underlined
                 24 => {
                     self.c.attr.mode.remove(GlyphAttribute::ATTR_UNDERLINE);
 
@@ -1380,22 +1408,29 @@ impl TermState {
                     tsetdecorstyle(g, 0);
                 }
 
+                // 25 -- Not blinking
                 25 => {
                     self.c.attr.mode.remove(GlyphAttribute::ATTR_BLINK);
                 }
 
+                // 27 -- Not inverse
                 27 => {
                     self.c.attr.mode.remove(GlyphAttribute::ATTR_REVERSE);
                 }
 
+                // 28 -- Visible (not hidden)
                 28 => {
                     self.c.attr.mode.remove(GlyphAttribute::ATTR_INVISIBLE);
                 }
 
+                // 29 -- Not crossed-out
                 29 => {
                     self.c.attr.mode.remove(GlyphAttribute::ATTR_STRUCK);
                 }
 
+                // 38 -- Set foreground color
+                // - 38 ; 5 ; Ps or 38 : 5 : Ps: indexed color 0-255.
+                // - 38 ; 2 ; Pr ; Pg ; Pb or 38 : 2 : Pi : Pr : Pg : Pb: direct RGB (Pi = colorspace id).
                 38 => {
                     let idx = tdefcolor(&attr, &mut i, l);
 
@@ -1404,10 +1439,12 @@ impl TermState {
                     }
                 }
 
+                // 39 -- Default foreground color
                 39 => {
                     self.c.attr.fg = config::DEFAULTFG;
                 }
 
+                // 48 -- Set background color, same parameters as 38
                 48 => {
                     let idx = tdefcolor(&attr, &mut i, l);
 
@@ -1416,11 +1453,12 @@ impl TermState {
                     }
                 }
 
+                // 49 -- Default background color
                 49 => {
                     self.c.attr.bg = config::DEFAULTBG;
                 }
 
-                // underline decoration color
+                // 58 -- Set underline color, same parameters as 38
                 58 => {
                     let idx = tdefcolor(&attr, &mut i, l);
 
@@ -1430,11 +1468,14 @@ impl TermState {
                     }
                 }
 
+                // 59 -- Default underline color
                 59 => {
                     let g = &mut self.c.attr;
                     tsetdecorcolor(g, DECOR_DEFAULT_COLOR);
                 }
 
+                // 30-37 / 40-47: foreground / background color 0-7.
+                // 90-97 / 100-107: bright foreground / background color 8-15.
                 _ => {
                     if BETWEEN!(a, 30, 37) {
                         self.c.attr.fg = a - 30;
