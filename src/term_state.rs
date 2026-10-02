@@ -1307,7 +1307,7 @@ impl TermState {
         }
     }
 
-    pub fn tsetattr(&mut self, attr: &[i32], l: usize) {
+    pub fn tsetattr(&mut self, attr: &[i32], sub: &[bool], l: usize) {
         let mut i = 0;
         while i < l {
             let a = attr[i] as u32;

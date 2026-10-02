@@ -30,6 +30,8 @@ pub struct CSIEscape {
     private: bool,
 
     pub arg: [i32; ESC_ARG_SIZ],
+    // sub is true if it's a subparameter
+    pub sub: [bool; ESC_ARG_SIZ],
     pub narg: usize, // nb of args
     pub mode: [u8; 2],
 }
@@ -41,6 +43,7 @@ impl Default for CSIEscape {
             len: 0,
             private: false,
             arg: [0; ESC_ARG_SIZ],
+            sub: [false; ESC_ARG_SIZ],
             narg: 0,
             mode: [b'\0'; 2],
         }
@@ -68,16 +71,13 @@ impl CSIEscape {
             self.narg += 1;
 
             let next = bytes.first().copied();
-
-            if sep == b';' && next == Some(b':') {
-                sep = b':';
+            match next {
+                Some(b @ (b';' | b':')) if self.narg < ESC_ARG_SIZ => {
+                    self.sub[self.narg] = b == b':';
+                    bytes = &bytes[1..];
+                }
+                _ => break,
             }
-
-            if next != Some(sep) || self.narg == ESC_ARG_SIZ {
-                break;
-            }
-
-            bytes = &bytes[1..];
         }
 
         self.mode[0] = bytes.get(0).copied().unwrap_or(0);
@@ -401,7 +401,7 @@ impl CSIEscape {
             // SGR -- Select Graphic Rendition: CSI Pm m
             // - Pm: attributes to apply, see `TermState::tsetattr`. Default 0 (reset).
             b'm' => {
-                state.tsetattr(&self.arg, self.narg);
+                state.tsetattr(&self.arg, &self.sub, self.narg);
             }
 
             // DSR -- Device Status Report: CSI Ps n
