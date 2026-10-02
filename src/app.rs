@@ -698,16 +698,30 @@ impl<'a> App<'a> {
                     fg += 8;
                 }
 
-                let mut fg_color = self.term.colors.get_from_glyph_color(fg);
-                let mut bg_color = self.term.colors.get_from_glyph_color(bg);
+                let (mut fg_color, mut bg_color) = if self.term.win.mode.contains(WinMode::Reverse)
+                {
+                    let fg_color = if fg == config::DEFAULTFG {
+                        self.term.colors.get_from_glyph_color(config::DEFAULTBG)
+                    } else {
+                        self.term.colors.get_from_glyph_color(fg).reversed()
+                    };
+
+                    let bg_color = if bg == config::DEFAULTBG {
+                        self.term.colors.get_from_glyph_color(config::DEFAULTFG)
+                    } else {
+                        self.term.colors.get_from_glyph_color(bg).reversed()
+                    };
+
+                    (fg_color, bg_color)
+                } else {
+                    let fg_color = self.term.colors.get_from_glyph_color(fg);
+                    let bg_color = self.term.colors.get_from_glyph_color(bg);
+
+                    (fg_color, bg_color)
+                };
 
                 if is_faint && !is_bold {
-                    fg_color = Color {
-                        red: fg_color.red / 2,
-                        green: fg_color.green / 2,
-                        blue: fg_color.blue / 2,
-                        alpha: fg_color.alpha,
-                    };
+                    fg_color.dim();
                 }
 
                 if g.mode.contains(GlyphAttribute::ATTR_REVERSE) {
