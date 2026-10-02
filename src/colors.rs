@@ -35,6 +35,7 @@ pub const COLORS: [u32; 512] = {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Color {
+    true_color: bool,
     pub red: u8,
     pub green: u8,
     pub blue: u8,
@@ -44,6 +45,7 @@ pub struct Color {
 impl Default for Color {
     fn default() -> Self {
         Self {
+            true_color: false,
             red: 0,
             green: 0,
             blue: 0,
@@ -55,11 +57,40 @@ impl Default for Color {
 impl Color {
     pub fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self {
+            true_color: true,
             red: r,
             green: g,
             blue: b,
             alpha: a,
         }
+    }
+
+    pub fn is_true_color(&self) -> bool {
+        self.true_color
+    }
+
+    pub fn dim(&mut self) {
+        self.red /= 2;
+        self.green /= 2;
+        self.blue /= 2;
+    }
+
+    pub fn dimmed(&self) -> Self {
+        let mut color = *self;
+        color.dim();
+        color
+    }
+
+    pub fn reverse(&mut self) {
+        self.red = 255 - self.red;
+        self.green = 255 - self.green;
+        self.blue = 255 - self.blue;
+    }
+
+    pub fn reversed(&self) -> Self {
+        let mut color = *self;
+        color.reverse();
+        color
     }
 
     pub fn as_f32_tuple(&self) -> (f32, f32, f32, f32) {
@@ -79,6 +110,7 @@ impl Color {
 
     pub fn from_true_color(color: u32) -> Self {
         Self {
+            true_color: true,
             red: ((color >> 16) & 0xFF) as u8,
             green: ((color >> 8) & 0xFF) as u8,
             blue: (color & 0xFF) as u8,
