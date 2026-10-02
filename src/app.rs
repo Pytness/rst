@@ -350,7 +350,7 @@ impl<'a> App<'a> {
             let pixw = term.state.pixw;
             let pixh = term.state.pixh;
 
-            let msg = format!("\x1b[48;{};{},{},{}t", row, col, pixw, pixh);
+            let msg = format!("\x1b[48;{};{};{};{}t", row, col, pixw, pixh);
 
             term.ttywrite(msg.as_bytes(), msg.len(), true);
         }
