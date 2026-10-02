@@ -694,7 +694,7 @@ impl<'a> App<'a> {
                 let is_bold = g.mode.contains(GlyphAttribute::ATTR_BOLD);
                 let is_faint = g.mode.contains(GlyphAttribute::ATTR_FAINT);
 
-                if is_bold && !is_faint && fg < 7 {
+                if is_bold && !is_faint && fg <= 7 {
                     fg += 8;
                 }
 
