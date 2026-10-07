@@ -229,7 +229,7 @@ pub struct TermState {
     pub images_alt: Vec<Image>, // Sixel images in the alternate screen
     pub lastc: char,            // last printed char outside of sequence, 0 if control
     pub sel: Selection,
-    pub tabs: Vec<u8>,
+    pub tabs: Vec<bool>,
 
     // outside of st's "pure" implementation
     stored_cursors: [TCursor; 2], // saved cursors for normal and alternate screen
@@ -300,10 +300,10 @@ impl TermState {
         self.tresetcursor();
 
         // memset
-        self.tabs.iter_mut().for_each(|t| *t = 0);
+        self.tabs.iter_mut().for_each(|t| *t = false);
 
         for i in (config::TABSPACES..self.col).step_by(config::TABSPACES) {
-            self.tabs[i] = 1;
+            self.tabs[i] = true;
         }
 
         self.top = 0;
@@ -673,7 +673,7 @@ impl TermState {
             .resize_with(row, || vec![Glyph::default(); col].into_boxed_slice());
 
         self.dirty.resize(row, true);
-        self.tabs.resize(col, 0);
+        self.tabs.resize(col, true);
 
         fn resize_boxed_sliced(line: &mut Line, new_len: usize) {
             let mut vec = line.to_vec();
@@ -694,13 +694,10 @@ impl TermState {
         }
 
         if col > self.col {
-            let last_tab = (1..self.col)
-                .rev()
-                .find(|&i| self.tabs[i] == 1)
-                .unwrap_or(0);
+            let last_tab = (1..self.col).rev().find(|&i| self.tabs[i]).unwrap_or(0);
 
             for i in (last_tab..col).step_by(config::TABSPACES) {
-                self.tabs[i] = 1;
+                self.tabs[i] = true;
             }
         }
 
@@ -1506,7 +1503,7 @@ impl TermState {
         if count > 0 {
             while x < self.col && count > 0 {
                 x += 1;
-                while x < self.col && self.tabs[x] == 0 {
+                while x < self.col && self.tabs[x] == false {
                     x += 1;
                 }
             }
@@ -1517,7 +1514,7 @@ impl TermState {
                 x -= 1;
                 count += 1;
 
-                while x > 0 && self.tabs[x] == 0 {
+                while x > 0 && self.tabs[x] == false {
                     x -= 1;
                 }
             }

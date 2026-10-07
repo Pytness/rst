@@ -617,7 +617,7 @@ impl Term {
             // HTS -- Horizontal Tab Set (0x88)
             // Sets a tab stop at the cursor column.
             0x88 => {
-                self.state.tabs[self.state.c.x] = 1;
+                self.state.tabs[self.state.c.x] = true;
                 interrupt_sequence = true;
             }
 
@@ -788,7 +788,7 @@ impl Term {
             // HTS -- Horizontal Tab Set: ESC H
             // Sets a tab stop at the cursor column.
             'H' => {
-                self.state.tabs[self.state.c.x] = 1;
+                self.state.tabs[self.state.c.x] = true;
             }
             // RI -- Reverse Index: ESC M
             // Moves the cursor up one row, scrolling down at the top margin.

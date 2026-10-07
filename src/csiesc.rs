@@ -194,8 +194,8 @@ impl CSIEscape {
             // - Ps = 3: clear all tab stops.
             b'g' => {
                 match self.arg[0] {
-                    0 => state.tabs[state.c.x] = 0,
-                    3 => state.tabs.iter_mut().for_each(|t| *t = 0),
+                    0 => state.tabs[state.c.x] = false,
+                    3 => state.tabs.iter_mut().for_each(|t| *t = false),
                     _ =>  unknown(),
 
                 }
