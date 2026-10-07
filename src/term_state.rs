@@ -694,12 +694,12 @@ impl TermState {
         }
 
         if col > self.col {
-            self.tabs[self.col..]
-                .iter_mut()
-                .step_by(config::TABSPACES)
-                .for_each(|t| *t = 0);
+            let last_tab = (1..self.col)
+                .rev()
+                .find(|&i| self.tabs[i] == 1)
+                .unwrap_or(0);
 
-            for i in (config::TABSPACES..col).step_by(config::TABSPACES) {
+            for i in (last_tab..col).step_by(config::TABSPACES) {
                 self.tabs[i] = 1;
             }
         }
