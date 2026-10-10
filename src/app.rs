@@ -578,7 +578,7 @@ impl<'a> App<'a> {
         } else {
             if self.term.state.selected(cx, cy) {
                 g.fg = config::DEFAULTFG;
-                g.bg = config::DEFAULTBG;
+                g.bg = config::DEFAULTRCS;
             } else if !(unsafe { *og }).mode.contains(GlyphAttribute::ATTR_REVERSE) {
                 if config::DYNAMIC_CURSOR {
                     std::mem::swap(&mut g.bg, &mut g.fg);
