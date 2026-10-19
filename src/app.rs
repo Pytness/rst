@@ -470,9 +470,8 @@ impl<'a> App<'a> {
 
         self.drawregion(0, 0, self.term.state.col, self.term.state.row);
 
-        let line = self.term.state.line[self.term.state.ocy].clone();
+        let mut line = self.term.state.line[self.term.state.ocy].clone();
         let g = self.term.state.line[self.term.state.c.y][cx];
-        let og = &raw mut self.term.state.line[self.term.state.ocy][self.term.state.ocx];
 
         self.xdrawcursor(
             cx as usize,
@@ -480,8 +479,7 @@ impl<'a> App<'a> {
             g,
             self.term.state.ocx as usize,
             self.term.state.ocy as usize,
-            og,
-            &line,
+            &mut line,
             self.term.state.col as usize,
         );
 
@@ -526,8 +524,7 @@ impl<'a> App<'a> {
         mut g: Glyph,
         ox: usize,
         oy: usize,
-        og: *mut Glyph,
-        line: &[Glyph],
+        line: &mut [Glyph],
         len: usize,
     ) {
         // CONSTANTLY HAVING TO FIGHT THE BORROW CHECKER
@@ -537,7 +534,7 @@ impl<'a> App<'a> {
 
         // remove the old cursor
         if self.term.state.selected(ox, oy) {
-            unsafe { (*og).mode.toggle(GlyphAttribute::ATTR_REVERSE) };
+            line[ox].mode.toggle(GlyphAttribute::ATTR_REVERSE);
         }
 
         // Redraw the line where cursor was previously.
@@ -579,7 +576,7 @@ impl<'a> App<'a> {
             if self.term.state.selected(cx, cy) {
                 g.fg = config::DEFAULTFG;
                 g.bg = config::DEFAULTRCS;
-            } else if !(unsafe { *og }).mode.contains(GlyphAttribute::ATTR_REVERSE) {
+            } else if !line[ox].mode.contains(GlyphAttribute::ATTR_REVERSE) {
                 if config::DYNAMIC_CURSOR {
                     std::mem::swap(&mut g.bg, &mut g.fg);
                 } else {
