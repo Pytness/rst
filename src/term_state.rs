@@ -174,7 +174,7 @@ pub enum SelectionType {
     Rectangular = 2,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Selection {
     pub mode: SelectionMode,
     pub type_: SelectionType,
@@ -184,6 +184,22 @@ pub struct Selection {
     pub ob: Vec2, // original beginning
     pub oe: Vec2, // original end
     pub alt: bool,
+}
+
+impl Default for Selection {
+    // Mirrors st's selinit: a zeroed origin would mark cell (0, 0) as selected.
+    fn default() -> Self {
+        Self {
+            mode: SelectionMode::Idle,
+            type_: SelectionType::default(),
+            snap: 0,
+            nb: Vec2::default(),
+            ne: Vec2::default(),
+            ob: Vec2 { x: -1, y: 0 },
+            oe: Vec2::default(),
+            alt: false,
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -859,7 +875,7 @@ impl TermState {
         let sel = &self.sel;
 
         // sel.ob.x == -1 => SelectionMode::SEL_REMOVED
-        if sel.mode == SelectionMode::Empty || sel.ob.x == -1 {
+        if matches!(sel.mode, SelectionMode::Empty | SelectionMode::Removed) || sel.ob.x == -1 {
             return false;
         }
 
