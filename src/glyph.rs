@@ -51,7 +51,7 @@ impl Default for Glyph {
             mode: GlyphAttribute::ATTR_NULL,
             fg: config::DEFAULTFG,
             bg: config::DEFAULTBG,
-            decoration: 0,
+            decoration: DECOR_DEFAULT_COLOR,
         }
     }
 }
