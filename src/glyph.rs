@@ -27,12 +27,25 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnderlineStyle {
     UnderlineStraight = 1,
     UnderlineDouble = 2,
     UnderlineCurly = 3,
     UnderlineDotted = 4,
     UnderlineDashed = 5,
+}
+
+impl UnderlineStyle {
+    pub fn from_bits(bits: u32) -> Self {
+        match bits {
+            2 => UnderlineStyle::UnderlineDouble,
+            3 => UnderlineStyle::UnderlineCurly,
+            4 => UnderlineStyle::UnderlineDotted,
+            5 => UnderlineStyle::UnderlineDashed,
+            _ => UnderlineStyle::UnderlineStraight,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -158,14 +171,7 @@ impl Decoration {
     }
 
     pub fn style(&self) -> UnderlineStyle {
-        match self.style_bits() {
-            1 => UnderlineStyle::UnderlineStraight,
-            2 => UnderlineStyle::UnderlineDouble,
-            3 => UnderlineStyle::UnderlineCurly,
-            4 => UnderlineStyle::UnderlineDotted,
-            5 => UnderlineStyle::UnderlineDashed,
-            _ => UnderlineStyle::UnderlineStraight, // Default to straight if invalid
-        }
+        UnderlineStyle::from_bits(self.style_bits())
     }
 
     pub fn set_style(&mut self, style: UnderlineStyle) {

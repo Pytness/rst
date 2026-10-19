@@ -21,10 +21,10 @@ use crate::colors::Color;
 use crate::config::{self, MAXLATENCY, MINLATENCY};
 use crate::font_registry::{DEFAULT_DPI, FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
-use crate::glyph::{Glyph, GlyphAttribute};
+use crate::glyph::{Glyph, GlyphAttribute, UnderlineStyle};
 use crate::keymap::{KeyMatch, ModifiersMatch, kmap};
 use crate::renderers::{self, TextRenderer};
-use crate::term_state::SU;
+use crate::term_state::{DECOR_DEFAULT_COLOR, SU};
 use crate::terminal::{TWRITE_ABORTED, Term};
 use crate::text_manager::TermGlyph;
 use crate::win::{CursorStyle, WinMode};
@@ -733,11 +733,24 @@ impl<'a> App<'a> {
                     fg_color = bg_color;
                 }
 
+                let underline = g.mode.contains(GlyphAttribute::ATTR_UNDERLINE).then(|| {
+                    let decor_color = g.tgetdecorcolor();
+                    let color = if decor_color == DECOR_DEFAULT_COLOR {
+                        fg_color
+                    } else {
+                        self.term.colors.get_from_glyph_color(decor_color)
+                    };
+
+                    (UnderlineStyle::from_bits(g.tgetdecorstyle()), color)
+                });
+
                 TermGlyph {
                     char: g.u,
                     fg_color,
                     bg_color,
                     font_style: glyph_to_font_style(g),
+                    underline,
+                    struck: g.mode.contains(GlyphAttribute::ATTR_STRUCK),
                 }
             })
             .collect()

@@ -100,3 +100,5 @@ pub const FONTS: &[&str] = &[
     "Symbols Nerd Font:size=10:antialias=true:autohint=true",
     "Noto Color Emoji:size=10:antialias=true:autohint=true",
 ];
+
+pub const CURLY_UNDERLINE_FREQUENCY_PER_CHAR: f32 = 2.0;

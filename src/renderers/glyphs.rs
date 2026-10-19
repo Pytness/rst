@@ -9,7 +9,10 @@ use freetype::bitmap::PixelMode;
 use freetype::{Library, face::LoadFlag};
 use glow::HasContext;
 
+use super::underline::{Underline, UnderlineMetrics, UnderlineRenderer};
+use crate::colors::Color;
 use crate::font_registry::{FontRegistry, FontStyle, ShapedGlyph};
+use crate::glyph::UnderlineStyle;
 use crate::macros::macs::include_shader;
 use crate::text_manager::{TermGlyph, TextManager};
 use crate::win::{CursorStyle, TermWindow};
@@ -80,6 +83,7 @@ pub struct TextRenderer<'a> {
 
     u_proj: Option<glow::NativeUniformLocation>,
     u_tex: Option<glow::NativeUniformLocation>,
+    underline_renderer: UnderlineRenderer,
     font_size_px: FontSize,
     px_size: f32,
 }
@@ -187,6 +191,7 @@ impl<'a> TextRenderer<'a> {
 
         let u_proj = unsafe { gl.get_uniform_location(program, "u_proj") };
         let u_tex = unsafe { gl.get_uniform_location(program, "u_font") };
+        let underline_renderer = unsafe { UnderlineRenderer::new(gl.clone()) };
 
         let atlas_tex = unsafe {
             let atlas_tex = gl
@@ -250,6 +255,7 @@ impl<'a> TextRenderer<'a> {
             vbo,
             u_proj,
             u_tex,
+            underline_renderer,
             font_size_px,
             // See the comment in `update_font_size`: this must be the actual
             // rendered pixels-per-em, not the nominal `px_size` argument.
@@ -516,6 +522,16 @@ impl<'a> TextRenderer<'a> {
 
         unsafe {
             self.draw_glyphs_bg(glyphs, &glyph_widths, row, col);
+            // Like st, underlines go beneath the glyphs and strikethroughs
+            // above them.
+            self.draw_decorations(
+                DecorationKind::Underline,
+                glyphs,
+                &glyph_widths,
+                row,
+                col,
+                proj,
+            );
             let gl = self.gl.as_ref();
 
             gl.bind_vertex_array(Some(self.vao));
@@ -682,7 +698,57 @@ impl<'a> TextRenderer<'a> {
             gl.bind_vertex_array(None);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
             gl.use_program(None);
+
+            self.draw_decorations(
+                DecorationKind::Strikethrough,
+                glyphs,
+                &glyph_widths,
+                row,
+                col,
+                proj,
+            );
         }
+    }
+
+    /// Underlines and strikethroughs share the underline renderer.
+    unsafe fn draw_decorations(
+        &self,
+        kind: DecorationKind,
+        glyphs: &[TermGlyph],
+        widths: &[usize],
+        row: i32,
+        col: i32,
+        proj: &[f32; 16],
+    ) {
+        let cell_box = self.text_manager.get_cell_box(row, col);
+        let font = self.font_size_px;
+        let metrics = UnderlineMetrics::new(font.height, cell_box.width as f32);
+        let baseline_y = (cell_box.y as f32 + font.descender).round();
+
+        let x = cell_box.x as f32;
+        let cell_width = cell_box.width as f32;
+        let cell_bottom = cell_box.y as f32;
+
+        let (spans, line_top) = match kind {
+            DecorationKind::Underline => (
+                collect_spans(glyphs, widths, x, cell_width, |g| g.underline),
+                metrics.underline_top(baseline_y),
+            ),
+            DecorationKind::Strikethrough => (
+                collect_spans(glyphs, widths, x, cell_width, |g| {
+                    g.struck
+                        .then_some((UnderlineStyle::UnderlineStraight, g.fg_color))
+                }),
+                // st's `winy + 2 * ascent / 3`, measured from the baseline so
+                // it tracks the glyphs.
+                baseline_y - (font.ascender / 3.0).ceil(),
+            ),
+        };
+
+        unsafe {
+            self.underline_renderer
+                .draw(&spans, &metrics, line_top, cell_bottom, proj)
+        };
     }
 
     pub unsafe fn draw_cursor(
@@ -727,6 +793,50 @@ impl<'a> Drop for TextRenderer<'a> {
             gl.delete_program(self.program);
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum DecorationKind {
+    Underline,
+    Strikethrough,
+}
+
+/// Merges runs of cells sharing the same style and color into one span to
+/// keep draw calls down.
+fn collect_spans(
+    glyphs: &[TermGlyph],
+    widths: &[usize],
+    mut x: f32,
+    cell_width: f32,
+    decoration: impl Fn(&TermGlyph) -> Option<(UnderlineStyle, Color)>,
+) -> Vec<Underline> {
+    let mut spans: Vec<Underline> = Vec::new();
+
+    for (term_g, cells) in glyphs.iter().zip(widths.iter()) {
+        let width = cell_width * *cells as f32;
+
+        if let Some((style, color)) = decoration(term_g) {
+            let color = color.as_f32_array();
+
+            match spans.last_mut() {
+                Some(span)
+                    if span.style == style && span.color == color && span.x + span.width == x =>
+                {
+                    span.width += width;
+                }
+                _ => spans.push(Underline {
+                    x,
+                    width,
+                    style,
+                    color,
+                }),
+            }
+        }
+
+        x += width;
+    }
+
+    spans
 }
 
 fn hb_to_px(v: f32, px_size: f32, units_per_em: f32) -> f32 {

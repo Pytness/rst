@@ -1,5 +1,6 @@
 use crate::colors::Color;
 use crate::font_registry::FontStyle;
+use crate::glyph::UnderlineStyle;
 use crate::win::TermWindow;
 
 #[derive(Clone, Copy)]
@@ -8,6 +9,8 @@ pub struct TermGlyph {
     pub fg_color: Color,
     pub bg_color: Color,
     pub font_style: FontStyle,
+    pub underline: Option<(UnderlineStyle, Color)>,
+    pub struck: bool,
 }
 
 pub struct CellPosition {
