@@ -552,14 +552,12 @@ impl<'a> App<'a> {
         }
 
         // Select the right color for the right mode.
-        g.mode.insert(
-            GlyphAttribute::ATTR_BOLD
-                | GlyphAttribute::ATTR_ITALIC
-                | GlyphAttribute::ATTR_UNDERLINE
-                | GlyphAttribute::ATTR_STRUCK
-                | GlyphAttribute::ATTR_WIDE
-                | GlyphAttribute::ATTR_BOXDRAW,
-        );
+        g.mode &= GlyphAttribute::ATTR_BOLD
+            | GlyphAttribute::ATTR_ITALIC
+            | GlyphAttribute::ATTR_UNDERLINE
+            | GlyphAttribute::ATTR_STRUCK
+            | GlyphAttribute::ATTR_WIDE
+            | GlyphAttribute::ATTR_BOXDRAW;
 
         if win.mode.contains(WinMode::Reverse) {
             g.mode.insert(GlyphAttribute::ATTR_REVERSE);
