@@ -517,7 +517,7 @@ impl<'a> TextRenderer<'a> {
             .iter()
             .zip(shaped.iter())
             .map(|(term_g, shaped_g)| {
-                if boxdraw::is_shader_drawn(term_g.char) {
+                if boxdraw::isboxdraw(term_g.char) {
                     return None;
                 }
                 self.ensure_glyph(shaped_g, term_g.font_style).cloned()
@@ -579,7 +579,7 @@ impl<'a> TextRenderer<'a> {
 
             let mut all_vertices: Vec<Vertex> = Vec::with_capacity(glyphs.len() * 6);
             for (term_g, (shaped_g, cached_g)) in glyphs_iter {
-                if boxdraw::is_shader_drawn(term_g.char) {
+                if boxdraw::isboxdraw(term_g.char) {
                     pen_x += self.font_size_px.width;
                     continue;
                 }
@@ -785,7 +785,7 @@ impl<'a> TextRenderer<'a> {
 
         let mut cells = Vec::new();
         for (term_g, cells_wide) in glyphs.iter().zip(widths.iter()) {
-            if boxdraw::is_shader_drawn(term_g.char) {
+            if boxdraw::isboxdraw(term_g.char) {
                 cells.push(BoxCell {
                     x,
                     y,

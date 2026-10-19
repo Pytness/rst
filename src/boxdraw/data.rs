@@ -241,14 +241,3 @@ pub const BOXDATA: [u32; 256] = {
     }
     data
 };
-
-pub enum BrailleDots {
-    BRAILLE_TOP_LEFT = 1 << 0,
-    BRAILLE_MIDDLE_LEFT = 1 << 1,
-    BRAILLE_BOTTOM_LEFT = 1 << 2,
-    BRAILLE_TOP_RIGHT = 1 << 3,
-    BRAILLE_MIDDLE_RIGHT = 1 << 4,
-    BRAILLE_BOTTOM_RIGHT = 1 << 5,
-    BRAILLE_LOWER_LEFT = 1 << 6,
-    BRAILLE_LOWER_RIGHT = 1 << 7,
-}
