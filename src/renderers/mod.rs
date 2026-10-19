@@ -1,3 +1,4 @@
+mod boxdraw;
 mod glyphs;
 mod grid;
 mod quad;

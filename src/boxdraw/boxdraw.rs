@@ -23,6 +23,7 @@ pub struct XftColor {
 
 // TODO: either make this configurable or remove it after copy boxdraw.c.
 const BOXDRAW: bool = true;
+const BOXDRAW_BOLD: bool = true;
 const BOXDRAW_BRAILLE: bool = true;
 
 fn as_block(u: char) -> u32 {
@@ -35,19 +36,28 @@ pub fn isboxdraw(u: char) -> bool {
     (block == 0x2500 && BOXDATA[u as usize & 0xff] != 0) || block == 0x2800
 }
 
-pub fn boxdrawindex(u: char) -> u32 {
+/// Whether `u` is drawn by the box drawing shader instead of the font. Grows
+/// with the categories the shader implements.
+pub fn is_shader_drawn(u: char) -> bool {
+    BOXDRAW_BRAILLE && as_block(u) == 0x2800
+}
+
+/// Expects `isboxdraw(u)`.
+pub fn boxdrawindex(u: char, bold: bool) -> u32 {
     let block = as_block(u);
     let u = u as u32;
 
     if BOXDRAW_BRAILLE && block == 0x2800 {
-        return BRL | u;
+        return BRL | (u & 0xff);
     }
 
-    if BOXDRAW && block == 0x2500 {
-        return BDB | BOXDATA[(u & 0xff) as usize];
+    let data = BOXDATA[(u & 0xff) as usize];
+
+    if BOXDRAW_BOLD && bold {
+        return BDB | data;
     }
 
-    return BOXDATA[u as usize];
+    data
 }
 
 pub fn drawboxes(

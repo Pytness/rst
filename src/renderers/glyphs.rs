@@ -9,7 +9,9 @@ use freetype::bitmap::PixelMode;
 use freetype::{Library, face::LoadFlag};
 use glow::HasContext;
 
+use super::boxdraw::{BoxCell, BoxDrawRenderer};
 use super::underline::{Underline, UnderlineMetrics, UnderlineRenderer};
+use crate::boxdraw::boxdraw;
 use crate::colors::Color;
 use crate::font_registry::{FontRegistry, FontStyle, ShapedGlyph};
 use crate::glyph::UnderlineStyle;
@@ -84,6 +86,7 @@ pub struct TextRenderer<'a> {
     u_proj: Option<glow::NativeUniformLocation>,
     u_tex: Option<glow::NativeUniformLocation>,
     underline_renderer: UnderlineRenderer,
+    boxdraw_renderer: BoxDrawRenderer,
     font_size_px: FontSize,
     px_size: f32,
 }
@@ -192,6 +195,7 @@ impl<'a> TextRenderer<'a> {
         let u_proj = unsafe { gl.get_uniform_location(program, "u_proj") };
         let u_tex = unsafe { gl.get_uniform_location(program, "u_font") };
         let underline_renderer = unsafe { UnderlineRenderer::new(gl.clone()) };
+        let boxdraw_renderer = unsafe { BoxDrawRenderer::new(gl.clone()) };
 
         let atlas_tex = unsafe {
             let atlas_tex = gl
@@ -256,6 +260,7 @@ impl<'a> TextRenderer<'a> {
             u_proj,
             u_tex,
             underline_renderer,
+            boxdraw_renderer,
             font_size_px,
             // See the comment in `update_font_size`: this must be the actual
             // rendered pixels-per-em, not the nominal `px_size` argument.
@@ -511,7 +516,12 @@ impl<'a> TextRenderer<'a> {
         let cached_glyphs: Vec<_> = glyphs
             .iter()
             .zip(shaped.iter())
-            .map(|(term_g, shaped_g)| self.ensure_glyph(shaped_g, term_g.font_style).cloned())
+            .map(|(term_g, shaped_g)| {
+                if boxdraw::is_shader_drawn(term_g.char) {
+                    return None;
+                }
+                self.ensure_glyph(shaped_g, term_g.font_style).cloned()
+            })
             .collect();
 
         let glyphs_iter = glyphs.iter().zip(shaped.iter().zip(cached_glyphs.iter()));
@@ -569,6 +579,11 @@ impl<'a> TextRenderer<'a> {
 
             let mut all_vertices: Vec<Vertex> = Vec::with_capacity(glyphs.len() * 6);
             for (term_g, (shaped_g, cached_g)) in glyphs_iter {
+                if boxdraw::is_shader_drawn(term_g.char) {
+                    pen_x += self.font_size_px.width;
+                    continue;
+                }
+
                 let &Some(GlyphTexture {
                     atlas_x,
                     atlas_y,
@@ -699,6 +714,8 @@ impl<'a> TextRenderer<'a> {
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
             gl.use_program(None);
 
+            self.draw_boxes(glyphs, &glyph_widths, row, col, proj);
+
             self.draw_decorations(
                 DecorationKind::Strikethrough,
                 glyphs,
@@ -748,6 +765,44 @@ impl<'a> TextRenderer<'a> {
         unsafe {
             self.underline_renderer
                 .draw(&spans, &metrics, line_top, cell_bottom, proj)
+        };
+    }
+
+    unsafe fn draw_boxes(
+        &self,
+        glyphs: &[TermGlyph],
+        widths: &[usize],
+        row: i32,
+        col: i32,
+        proj: &[f32; 16],
+    ) {
+        let cell_box = self.text_manager.get_cell_box(row, col);
+        let cell_width = cell_box.width as f32;
+        let cell_height = cell_box.height as f32;
+        // `cell_box.y` is the cell's bottom edge.
+        let y = (cell_box.y - cell_box.height) as f32;
+        let mut x = cell_box.x as f32;
+
+        let mut cells = Vec::new();
+        for (term_g, cells_wide) in glyphs.iter().zip(widths.iter()) {
+            if boxdraw::is_shader_drawn(term_g.char) {
+                cells.push(BoxCell {
+                    x,
+                    y,
+                    code: boxdraw::boxdrawindex(
+                        term_g.char,
+                        matches!(term_g.font_style, FontStyle::Bold | FontStyle::ItalicBold),
+                    ),
+                    color: term_g.fg_color.as_f32_array(),
+                });
+            }
+
+            x += cell_width * *cells_wide as f32;
+        }
+
+        unsafe {
+            self.boxdraw_renderer
+                .draw(&cells, cell_width, cell_height, proj)
         };
     }
 
