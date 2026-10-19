@@ -47,17 +47,20 @@ bool has(uint bd, uint bits) {
     return (bd & bits) != 0u;
 }
 
+// Stem about width/8 to match the underscore. Bold is 1.5x and at least
+// 1px thicker, but only once the cell is big enough to show it.
+int stem_width(ivec2 size, uint bd) {
+    int mwh = min(size.x, size.y);
+    int base_s = max(1, div_round(mwh, 8));
+    bool bold = has(bd, BDB) && mwh >= 6;
+    return bold ? max(base_s + 1, div_round(3 * base_s, 2)) : base_s;
+}
+
 // Port of st's drawboxlines. Heavy is light + double drawn so they merge.
 bool lines(ivec2 p, ivec2 size, uint bd) {
     int w = size.x;
     int h = size.y;
-
-    // Stem about width/8 to match the underscore. Bold is 1.5x and at least
-    // 1px thicker, but only once the cell is big enough to show it.
-    int mwh = min(w, h);
-    int base_s = max(1, div_round(mwh, 8));
-    bool bold = has(bd, BDB) && mwh >= 6;
-    int s = bold ? max(base_s + 1, div_round(3 * base_s, 2)) : base_s;
+    int s = stem_width(size, bd);
 
     // (w2, h2, s, s) is the center texel; lengths per direction include it.
     int w2 = div_round(w - s, 2);
@@ -67,11 +70,11 @@ bool lines(ivec2 p, ivec2 size, uint bd) {
     uint dbl = bd & (DL | DU | DR | DD);
 
     if (light != 0u) {
-        // Skip the center texel at arcs and where light meets a double
-        // corner, so it does not poke into the double's inner gap.
+        // Skip the center texel where light meets a double corner, so it
+        // does not poke into the double's inner gap.
         bool multi_light = (light & (light - 1u)) != 0u;
         bool multi_double = (dbl & (dbl - 1u)) != 0u;
-        int d = has(bd, BDA) || (multi_double && !multi_light) ? -s : 0;
+        int d = multi_double && !multi_light ? -s : 0;
 
         if (has(bd, LL) && rect(p, 0, h2, w2 + s + d, s)) return true;
         if (has(bd, LU) && rect(p, w2, 0, s, h2 + s + d)) return true;
@@ -108,6 +111,37 @@ bool lines(ivec2 p, ivec2 size, uint bd) {
     }
 
     return false;
+}
+
+// A quarter circle joining the two light stems the arc points to. The
+// radius is as large as the nearer cell edge allows; the longer stem
+// continues straight from the circle to its edge.
+float arc(ivec2 p, ivec2 size, uint bd) {
+    int s = stem_width(size, bd);
+    float sf = float(s);
+
+    // Stems sit on the same pixels as in `lines` so arcs join them.
+    int w2 = div_round(size.x - s, 2);
+    int h2 = div_round(size.y - s, 2);
+    vec2 stem = vec2(w2, h2) + sf * 0.5;
+
+    vec2 dir = vec2(has(bd, LR) ? 1.0 : -1.0, has(bd, LD) ? 1.0 : -1.0);
+    vec2 to_edge = vec2(
+        dir.x > 0.0 ? float(size.x) - stem.x : stem.x,
+        dir.y > 0.0 ? float(size.y) - stem.y : stem.y
+    );
+    float r = min(to_edge.x, to_edge.y);
+    vec2 center = stem + dir * r;
+
+    vec2 frag = vec2(p) + 0.5;
+    // Positive once past the circle's center, where the stems run straight.
+    vec2 past = (frag - center) * dir;
+
+    if (past.y > 0.0) return float(p.x >= w2 && p.x < w2 + s);
+    if (past.x > 0.0) return float(p.y >= h2 && p.y < h2 + s);
+
+    float d = abs(length(frag - center) - r);
+    return clamp(sf * 0.5 + 0.5 - d, 0.0, 1.0);
 }
 
 // Eighth blocks and quadrants, with st's integer splits.
@@ -169,7 +203,9 @@ void main() {
     uint data = v_code & 0xffu;
 
     float coverage;
-    if (has(v_code, BDL | BDA)) {
+    if (has(v_code, BDA)) {
+        coverage = arc(p, size, v_code);
+    } else if (has(v_code, BDL)) {
         coverage = float(lines(p, size, v_code));
     } else if (has(v_code, BBS)) {
         // st mixes fg into bg in quarters; blending fg at that alpha over
