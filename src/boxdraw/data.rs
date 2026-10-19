@@ -26,6 +26,8 @@ pub const BBU: u32 = 3 << 10; /* Box Block Upper X/8 */
 pub const BBR: u32 = 4 << 10; /* Box Block Right X/8 */
 pub const BBQ: u32 = 5 << 10; /* Box Block Quadrants */
 pub const BRL: u32 = 6 << 10; /* Box Braille (data is lower byte of U28XX) */
+pub const BDASH: u32 = 7 << 10; /* Box Draw Dashes (light/heavy) */
+pub const BDIAG: u32 = 8 << 10; /* Box Draw Diagonals (light) */
 
 pub const BBS: u32 = 1 << 14; /* Box Block Shades */
 pub const BDB: u32 = 1 << 15; /* Box Draw is Bold */
@@ -58,6 +60,14 @@ pub const TL: u32 = 1 << 0;
 pub const TR: u32 = 1 << 1;
 pub const BL: u32 = 1 << 2;
 pub const BR: u32 = 1 << 3;
+
+/* (BDASH) Dash count is in the lowest bits */
+pub const DASH_VERTICAL: u32 = 1 << 3;
+pub const DASH_HEAVY: u32 = 1 << 4;
+
+/* (BDIAG) Rising is lower left to upper right */
+pub const DIAG_RISING: u32 = 1 << 0;
+pub const DIAG_FALLING: u32 = 1 << 1;
 
 const fn index_to_code(i: usize) -> u32 {
     match i {
@@ -223,13 +233,30 @@ const fn index_to_code(i: usize) -> u32 {
         0x91 => BBS + 1,
         0x92 => BBS + 2,
         0x93 => BBS + 3,
-        /* U+2504 - U+250B, U+254C - U+254F: unsupported (dashes) */
-        /* U+2571 - U+2573: unsupported (diagonals) */
+        /* triple, quadruple and double dashes */
+        0x04 => BDASH + 3,
+        0x05 => BDASH + 3 + DASH_HEAVY,
+        0x06 => BDASH + 3 + DASH_VERTICAL,
+        0x07 => BDASH + 3 + DASH_VERTICAL + DASH_HEAVY,
+        0x08 => BDASH + 4,
+        0x09 => BDASH + 4 + DASH_HEAVY,
+        0x0a => BDASH + 4 + DASH_VERTICAL,
+        0x0b => BDASH + 4 + DASH_VERTICAL + DASH_HEAVY,
+        0x4c => BDASH + 2,
+        0x4d => BDASH + 2 + DASH_HEAVY,
+        0x4e => BDASH + 2 + DASH_VERTICAL,
+        0x4f => BDASH + 2 + DASH_VERTICAL + DASH_HEAVY,
+
+        /* diagonals */
+        0x71 => BDIAG + DIAG_RISING,
+        0x72 => BDIAG + DIAG_FALLING,
+        0x73 => BDIAG + DIAG_RISING + DIAG_FALLING,
+
         _ => 0,
     }
 }
 
-/* Data for U+2500 - U+259F except dashes/diagonals */
+/* Data for U+2500 - U+259F */
 pub const BOXDATA: [u32; 256] = {
     let mut data = [0; 256];
     let mut i = 0;

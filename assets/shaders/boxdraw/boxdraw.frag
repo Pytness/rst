@@ -17,6 +17,8 @@ const uint BBU = 3u << 10;
 const uint BBR = 4u << 10;
 const uint BBQ = 5u << 10;
 const uint BRL = 6u << 10;
+const uint BDASH = 7u << 10;
+const uint BDIAG = 8u << 10;
 const uint BBS = 1u << 14;
 const uint BDB = 1u << 15;
 
@@ -33,6 +35,13 @@ const uint TL = 1u << 0;
 const uint TR = 1u << 1;
 const uint BL = 1u << 2;
 const uint BR = 1u << 3;
+
+const uint DASH_COUNT = 7u;
+const uint DASH_VERTICAL = 1u << 3;
+const uint DASH_HEAVY = 1u << 4;
+
+const uint DIAG_RISING = 1u << 0;
+const uint DIAG_FALLING = 1u << 1;
 
 // Non-positive sizes cover nothing, like XftDrawRect.
 bool rect(ivec2 p, int x, int y, int w, int h) {
@@ -144,6 +153,52 @@ float arc(ivec2 p, ivec2 size, uint bd) {
     return clamp(sf * 0.5 + 0.5 - d, 0.0, 1.0);
 }
 
+// Dashes sit on the same stems as `lines`, heavy spanning the light stem
+// plus both doubles beside it. Each dash is centered in an equal share of
+// the cell so the gaps stay even across neighbouring cells.
+bool dashes(ivec2 p, ivec2 size, uint bd) {
+    bool vertical = has(bd, DASH_VERTICAL);
+    int s = stem_width(size, bd);
+
+    // Swap axes so the dashes always run along `len`.
+    int len = vertical ? size.y : size.x;
+    int across = vertical ? size.x : size.y;
+    int along = vertical ? p.y : p.x;
+    int at = vertical ? p.x : p.y;
+
+    int stem = div_round(across - s, 2);
+    bool on_stem = has(bd, DASH_HEAVY)
+        ? at >= stem - s && at < stem + 2 * s
+        : at >= stem && at < stem + s;
+    if (!on_stem) return false;
+
+    int count = int(bd & DASH_COUNT);
+    int i = along * count / len;
+    int start = i * len / count;
+    int end = (i + 1) * len / count;
+    int gap = max(1, div_round(end - start, 4));
+
+    return along >= start + gap / 2 && along < end - (gap - gap / 2);
+}
+
+// Corner to corner, so diagonals continue into diagonally adjacent cells.
+float diagonals(ivec2 p, ivec2 size, uint bd) {
+    vec2 frag = vec2(p) + 0.5;
+    vec2 cell = vec2(size);
+    float half_width = float(stem_width(size, bd)) * 0.5;
+
+    // Distance to the line through the cell corners, measured
+    // perpendicularly so steep cells keep the stem width.
+    float len = length(cell);
+    float rising = abs(frag.x * cell.y + frag.y * cell.x - cell.x * cell.y) / len;
+    float falling = abs(frag.x * cell.y - frag.y * cell.x) / len;
+
+    float coverage = 0.0;
+    if (has(bd, DIAG_RISING)) coverage = max(coverage, clamp(half_width + 0.5 - rising, 0.0, 1.0));
+    if (has(bd, DIAG_FALLING)) coverage = max(coverage, clamp(half_width + 0.5 - falling, 0.0, 1.0));
+    return coverage;
+}
+
 // Eighth blocks and quadrants, with st's integer splits.
 bool blocks(ivec2 p, ivec2 size, uint category, uint data) {
     int w = size.x;
@@ -213,6 +268,10 @@ void main() {
         coverage = float(data) / 4.0;
     } else if (category == BRL) {
         coverage = float(braille(p, size, data));
+    } else if (category == BDASH) {
+        coverage = float(dashes(p, size, v_code));
+    } else if (category == BDIAG) {
+        coverage = diagonals(p, size, v_code);
     } else {
         coverage = float(blocks(p, size, category, data));
     }
