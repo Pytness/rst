@@ -1217,9 +1217,6 @@ impl TermState {
                     1047 |
                     1049
                     => {
-
-                        println!("ALTSCREEEEEEN tsetmode: set/reset private mode {} to {}", arg, set);
-
                         let cursor_mode = match set {
                             true => CursorMovement::CursorSave,
                             false => CursorMovement::CursorLoad,
