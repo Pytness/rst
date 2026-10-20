@@ -17,6 +17,12 @@ pub const MINLATENCY: u32 = 2;
 pub const MAXLATENCY: u32 = 33;
 
 /*
+ * Synchronized-Update timeout in ms
+ * https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec
+ */
+pub const SU_TIMEOUT: u64 = 200;
+
+/*
  * Internal mouse shortcuts.
  * Beware that overloading Button1 will disable the selection.
  */

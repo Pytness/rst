@@ -460,11 +460,15 @@ impl Term {
                 self.csiescseq.buf[idx] = u as u8;
                 self.csiescseq.len += 1;
 
+                // strhandle matches on the DCS intro (e.g. BSU/ESU `=1s`/`=2s`)
+                self.strescseq.buf.push(u as u8);
+                self.strescseq.len += 1;
+
                 let len = self.csiescseq.len;
 
                 if BETWEEN!(u as u8, 0x40, 0x7E) || len >= self.csiescseq.buf.len() - 1 {
-                    // Only the intro is CSI-shaped; drop ESC_DCS so the payload falls into the
-                    // ESC_STR body consumer below instead of printing as literal text.
+                    // Only the intro is CSI-shaped; drop ESC_DCS so the payload goes to the
+                    // ESC_STR consumer at the top of tputc instead of being re-parsed as an intro.
                     self.esc.remove(EscapeState::ESC_DCS);
                     self.csiparse();
                     self.dcshandle();
@@ -860,6 +864,11 @@ impl Term {
 
     // TODO: implement this
     fn dcshandle(&mut self) {
+        // BSU/ESU are handled by strhandle once the string terminates
+        if matches!(&self.csiescseq.buf[..self.csiescseq.len], b"=1s" | b"=2s") {
+            return;
+        }
+
         match self.csiescseq.mode[0] {
             // DECSIXEL -- Sixel graphics: DCS P1 ; P2 ; P3 q <data> ST
             // - P1: pixel aspect ratio (obsolete, superseded by the raster attributes).

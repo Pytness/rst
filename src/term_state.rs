@@ -16,7 +16,20 @@ pub static mut IOFD: i32 = 1;
 pub static mut CMDFD: i32 = -1;
 pub static mut PID: i32 = 0;
 pub static mut SU: usize = 0;
+pub static mut SUTV: Option<std::time::Instant> = None;
 pub static mut TWRITE_ABORTED: bool = false;
+
+/// Whether a synchronized update is in progress, ending it once it has lasted
+/// `timeout` ms so a client that never sends ESU can't freeze the screen.
+pub fn tinsync(timeout: u64) -> bool {
+    unsafe {
+        if SU != 0 && SUTV.is_some_and(|tv| tv.elapsed().as_millis() as u64 >= timeout) {
+            SU = 0;
+        }
+
+        SU != 0
+    }
+}
 
 /// fd for the raw-bytes-read-from-the-pty log (child's output), or -1 if disabled.
 static mut LOG_READ_FD: i32 = -1;
@@ -851,24 +864,15 @@ impl TermState {
         return i;
     }
 
-    fn tsync_begin(&mut self) {
-        // clock_gettime(CLOCK_MONOTONIC, &sutv);
-        // su = 1;
-
-        return;
+    pub fn tsync_begin(&self) {
+        unsafe {
+            SUTV = Some(std::time::Instant::now());
+            SU = 1;
+        }
     }
 
-    fn tsync_end(&self) {
-        // static void tsync_end() { su = 0; }
-        // int tinsync(uint timeout) {
-        // 	struct timespec now;
-        // 	if (su && !clock_gettime(CLOCK_MONOTONIC, &now) && TIMEDIFF(now, sutv) >= timeout) {
-        // 		su = 0;
-        // 	}
-        // 	return su;
-        // }
-
-        return;
+    pub fn tsync_end(&self) {
+        unsafe { SU = 0 };
     }
 
     pub fn selected(&self, x: usize, y: usize) -> bool {

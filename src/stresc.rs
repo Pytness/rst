@@ -254,6 +254,15 @@ impl StrEscape {
 
                     // TODO: continue sixel decoding
                 }
+
+                // https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec
+                match &self.buf[..self.len] {
+                    b"=1s" => state.tsync_begin(), // BSU
+                    b"=2s" => state.tsync_end(),   // ESU
+                    _ => {}
+                }
+
+                return;
             }
 
             // APC -- Application Program Command: ESC _ Pt ST

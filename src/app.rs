@@ -24,7 +24,7 @@ use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute, UnderlineStyle};
 use crate::keymap::{KeyMatch, ModifiersMatch, kmap};
 use crate::renderers::{self, TextRenderer};
-use crate::term_state::{DECOR_DEFAULT_COLOR, SU};
+use crate::term_state::{DECOR_DEFAULT_COLOR, tinsync};
 use crate::terminal::{TWRITE_ABORTED, Term};
 use crate::text_manager::TermGlyph;
 use crate::win::{CursorStyle, WinMode};
@@ -1078,11 +1078,9 @@ impl<'a> ApplicationHandler for App<'a> {
         }
 
         // on synchronized-update draw-suspension: don't reset `drawing` so we
-        // draw ASAP once we can.
-        // NOTE: `tinsync`'s elapsed-time check isn't
-        // ported yet (no `sutv`), and DECSET 2026 (`tsetmode`) is still a
-        // stub, so SU never actually becomes nonzero today.
-        if unsafe { SU } != 0 {
+        // draw ASAP once we can (just after ESU). keep a timeout so we still
+        // draw on SU-timeout even without new content.
+        if tinsync(config::SU_TIMEOUT) {
             self.loop_timeout = MINLATENCY as f64;
             self.schedule(event_loop, now, self.loop_timeout);
             return;

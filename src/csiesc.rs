@@ -3,7 +3,7 @@ use std::ptr::null_mut;
 use crate::config::VTIDEN;
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
 use crate::snprintf;
-use crate::term_state::{CursorMovement, TermMode, TermState};
+use crate::term_state::{CursorMovement, SU, TermMode, TermState};
 use crate::win::{TermWindow, WinMode};
 
 pub const UTF_INVALID: usize = 0xFFFD;
@@ -529,9 +529,7 @@ impl CSIEscape {
                         let feature_mode = match self.arg[0] {
                             // Synchronized output
                             2026 => {
-                                // Supported and screen updates are shown as usual
-                                // (e.g. as soon as they arrive)
-                                2
+                                if unsafe { SU } != 0 { 1 } else { 2 }
                             }
 
                             // In-band resize notifications
