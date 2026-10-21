@@ -22,7 +22,7 @@ use crate::config::{self, MAXLATENCY, MINLATENCY};
 use crate::font_registry::{DEFAULT_DPI, FontRegistry, FontStyle};
 use crate::gl_handler::GlHandler;
 use crate::glyph::{Glyph, GlyphAttribute, UnderlineStyle};
-use crate::keymap::{KeyMatch, ModifiersMatch, kmap};
+use crate::keymap::{Key, kmap};
 use crate::renderers::{self, TextRenderer};
 use crate::term_state::{DECOR_DEFAULT_COLOR, tinsync};
 use crate::terminal::{TWRITE_ABORTED, Term};
@@ -172,21 +172,17 @@ impl<'a> App<'a> {
         let _is_alt_screen = self.term.state.tisaltscr();
 
         // shortcuts
-        let key_match = KeyMatch::new(ModifiersMatch::Exact(self.keyboard_modifiers), code);
         for shortcut in super::config::SHORTCUTS {
-            if shortcut.key_match == key_match {
+            if shortcut.key_match.matches(code, self.keyboard_modifiers) {
                 (shortcut.callback)(self);
                 return;
             }
         }
 
         // custom keys from config
-        if let Some(customkey) = kmap(code, self.keyboard_modifiers) {
-            let customkey_str = customkey
-                .to_str()
-                .expect("Failed to convert custom key to string");
-            self.term
-                .ttywrite(customkey_str.as_bytes(), customkey_str.len(), true);
+        let key = Key::from_event(&event, code);
+        if let Some(customkey) = kmap(key, self.keyboard_modifiers, self.term.win.mode) {
+            self.term.ttywrite(customkey, customkey.len(), true);
             return;
         }
 
