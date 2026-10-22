@@ -1,6 +1,7 @@
+use std::io::Write as _;
+
 use crate::config::VTIDEN;
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
-use crate::snprintf;
 use crate::term_state::{CursorMovement, SU, TermMode, TermState};
 use crate::win::{TermWindow, WinMode};
 
@@ -298,29 +299,28 @@ impl CSIEscape {
 
                         let term = unsafe {&mut *state._term_ptr};
 
-                        // TODO: replace snprintf if possible
-                        let mut buffer = [0u8; 40];
+                        let mut buffer = Vec::new();
                         if pi == 1 && pa_is_valid {
                             // number of sixel color registers
                             // (read, reset and read the maximum value give the same response)
-                            let n = snprintf!(buffer, b"\x1b[?1;0;%dS\0", DECSIXEL_PALETTE_MAX) as usize;
-                            term.ttywrite(&buffer[..n], true);
+                            write!(buffer, "\x1b[?1;0;{}S", DECSIXEL_PALETTE_MAX).expect("writing to a Vec cannot fail");
+                            term.ttywrite(&buffer, true);
                         } else if pi == 2 && pa_is_valid {
                             // sixel graphics geometry (in pixels)
                             // (read, reset and read the maximum value give the same response)
 
-                            let n = snprintf!(buffer, b"\x1b[?2;0;%d;%dS\0",
-                                    (state.col * win.cw as usize).min(DECSIXEL_WIDTH_MAX),
-                                    (state.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX)
-                                ) as usize;
+                            let width = (state.col * win.cw as usize).min(DECSIXEL_WIDTH_MAX);
+                            let height = (state.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX);
 
-                            term.ttywrite(&buffer[..n], true);
+                            write!( buffer, "\x1b[?2;0;{};{}S", width, height).expect("writing to a Vec cannot fail");
+
+                            term.ttywrite(&buffer, true);
                         } else {
                             // the number of color registers and sixel geometry can't be changed
                             // failure
-                            let n = snprintf!(buffer, b"\x1b[?%d;3;0S\0", pi) as usize;
+                            write!(buffer, "\x1b[?{};3;0S", pi).expect("writing to a Vec cannot fail");
 
-                            state.ttywrite_pty(&buffer[..n]);
+                            state.ttywrite_pty(&buffer);
                         }
                     }
 
@@ -412,9 +412,9 @@ impl CSIEscape {
                         term.ttywrite(b"\x1b[0n", false);
                     },
                     6 => {
-                        let mut buffer = [0u8; 40];
-                        let len = snprintf!(buffer, b"\x1b[%i;%iR\0", state.c.y + 1, state.c.x + 1) as usize;
-                        term.ttywrite(&buffer[..len], false);
+                        let mut buffer = Vec::new();
+                        write!(buffer, "\x1b[{};{}R", state.c.y + 1, state.c.x + 1).expect("writing to a Vec cannot fail");
+                        term.ttywrite(&buffer, false);
                     }
                     _ => unknown(),
 
@@ -489,27 +489,27 @@ impl CSIEscape {
             // - Ps = 18: report the text area size in characters. Reply: CSI 8 ; rows ; cols t.
             b't' => {
                 let term = unsafe {&mut *state._term_ptr};
-                let mut buffer = [0u8; 40];
+                let mut buffer = Vec::new();
                 match self.arg[0] {
                     14 => {
-                        let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", state.pixh, state.pixw) as usize;
-                        term.ttywrite(&buffer[..len], false);
+                        write!(buffer, "\x1b[4;{};{}t", state.pixh, state.pixw).expect("writing to a Vec cannot fail");
+                        term.ttywrite(&buffer, false);
                     }
 
                     16 => {
-                        let len = snprintf!(
+                        write!(
                             buffer,
-                            b"\x1b[6;%i;%it\0",
+                            "\x1b[6;{};{}t",
                             state.pixh / state.row,
                             state.pixw / state.col
-                        ) as usize;
+                        ).expect("writing to a Vec cannot fail");
 
-                        term.ttywrite(&buffer[..len], false);
+                        term.ttywrite(&buffer, false);
                     }
 
                     18 => {
-                        let len = snprintf!(buffer, b"\x1b[8;%i;%it\0", state.row, state.col) as usize;
-                        term.ttywrite(&buffer[..len], false);
+                        write!(buffer, "\x1b[8;{};{}t", state.row, state.col).expect("writing to a Vec cannot fail");
+                        term.ttywrite(&buffer, false);
                     }
 
                     _ => unknown(),
@@ -543,10 +543,9 @@ impl CSIEscape {
                             }
                         };
 
-                        let mut buffer = [0u8; 40];
-                        let len =
-                            snprintf!(buffer, b"\x1b[?%d;%d$y\0", self.arg[0], feature_mode) as usize;
-                        state.ttywrite_pty(&buffer[..len]);
+                        let mut buffer = Vec::new();
+                        write!(buffer, "\x1b[?{};{}$y", self.arg[0], feature_mode).expect("writing to a Vec cannot fail");
+                        state.ttywrite_pty(&buffer);
                     }
                     _ => unknown(),
                 }

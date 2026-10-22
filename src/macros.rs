@@ -6,20 +6,6 @@ macro_rules! BETWEEN {
 }
 
 #[macro_export]
-macro_rules! snprintf {
-    ($buffer:expr, $format:expr, $($arg:expr),*) => {
-        unsafe {
-            libc::snprintf(
-                $buffer.as_mut_ptr() as *mut i8,
-                $buffer.len(),
-                $format.as_ptr() as *const i8,
-                $($arg),*
-            )
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! time_this {
     ($name:expr, $block:block) => {{
         let start = std::time::Instant::now();
