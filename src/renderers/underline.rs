@@ -75,7 +75,7 @@ pub struct UnderlineRenderer {
 }
 
 impl UnderlineRenderer {
-    pub unsafe fn new(gl: Rc<glow::Context>) -> Self {
+    pub fn new(gl: Rc<glow::Context>) -> Self {
         unsafe {
             let program = include_shader!(gl, "underline");
             let vao = gl
@@ -116,7 +116,7 @@ impl UnderlineRenderer {
 
     /// `line_top` is where a single-thickness line starts. It and
     /// `cell_bottom` must be whole pixels so strokes stay crisp.
-    pub unsafe fn draw(
+    pub fn draw(
         &self,
         spans: &[Underline],
         metrics: &UnderlineMetrics,
@@ -159,7 +159,7 @@ impl UnderlineRenderer {
     }
 
     /// Expects the program, VAO and VBO to be bound by `draw`.
-    unsafe fn draw_span(
+    fn draw_span(
         &self,
         underline: &Underline,
         metrics: &UnderlineMetrics,

@@ -13,7 +13,7 @@ pub struct QuadRenderer {
 }
 
 impl QuadRenderer {
-    pub unsafe fn new(gl: Rc<glow::Context>, width: i32, height: i32) -> Self {
+    pub fn new(gl: Rc<glow::Context>, width: i32, height: i32) -> Self {
         unsafe {
             let program = include_shader!(gl, "quad");
             let vao = gl.create_vertex_array().expect("failed to create quad VAO");
@@ -104,7 +104,7 @@ impl QuadRenderer {
         }
     }
 
-    pub unsafe fn render(&self) {
+    pub fn render(&self) {
         let gl = &self.gl;
 
         unsafe {
@@ -125,7 +125,7 @@ impl QuadRenderer {
         }
     }
 
-    pub unsafe fn with(&self, f: impl FnOnce()) {
+    pub fn with(&self, f: impl FnOnce()) {
         let gl = &self.gl;
 
         unsafe {
@@ -137,7 +137,7 @@ impl QuadRenderer {
         }
     }
 
-    pub unsafe fn clear_section(
+    pub fn clear_section(
         &self,
         x: i32,
         y: i32,

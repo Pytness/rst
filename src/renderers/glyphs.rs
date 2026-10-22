@@ -144,7 +144,7 @@ impl<'a> TextRenderer<'a> {
         self.atlas_shelf_height = 0;
     }
 
-    pub unsafe fn new(
+    pub fn new(
         gl: Rc<glow::Context>,
         font_registry: &'a FontRegistry,
         px_size: f32,
@@ -194,8 +194,8 @@ impl<'a> TextRenderer<'a> {
 
         let u_proj = unsafe { gl.get_uniform_location(program, "u_proj") };
         let u_tex = unsafe { gl.get_uniform_location(program, "u_font") };
-        let underline_renderer = unsafe { UnderlineRenderer::new(gl.clone()) };
-        let boxdraw_renderer = unsafe { BoxDrawRenderer::new(gl.clone()) };
+        let underline_renderer = UnderlineRenderer::new(gl.clone());
+        let boxdraw_renderer = BoxDrawRenderer::new(gl.clone());
 
         let atlas_tex = unsafe {
             let atlas_tex = gl
@@ -335,7 +335,7 @@ impl<'a> TextRenderer<'a> {
         let key = (glyph.font_index, glyph.glyph_id, style);
 
         if !self.glyphs.contains_key(&key) {
-            let texture = unsafe { self.load_glyph_into_atlas(glyph, style)? };
+            let texture = self.load_glyph_into_atlas(glyph, style)?;
             self.glyphs.insert(key, texture);
         }
 
@@ -343,7 +343,7 @@ impl<'a> TextRenderer<'a> {
     }
 
     /// Rasterises a single glyph with FreeType and uploads it into the shared glyph atlas.
-    unsafe fn load_glyph_into_atlas(
+    fn load_glyph_into_atlas(
         &mut self,
         glyph: &ShapedGlyph,
         style: FontStyle,
@@ -451,13 +451,7 @@ impl<'a> TextRenderer<'a> {
         }
     }
 
-    pub unsafe fn draw_glyphs_bg(
-        &self,
-        term_glyphs: &[TermGlyph],
-        widths: &[usize],
-        row: i32,
-        col: i32,
-    ) {
+    pub fn draw_glyphs_bg(&self, term_glyphs: &[TermGlyph], widths: &[usize], row: i32, col: i32) {
         let mut advance_x = 0;
 
         // println!(
@@ -491,13 +485,7 @@ impl<'a> TextRenderer<'a> {
         }
     }
 
-    pub unsafe fn draw_glyphs(
-        &mut self,
-        glyphs: &[TermGlyph],
-        row: i32,
-        col: i32,
-        proj: &[f32; 16],
-    ) {
+    pub fn draw_glyphs(&mut self, glyphs: &[TermGlyph], row: i32, col: i32, proj: &[f32; 16]) {
         let cell_box = self.text_manager.get_cell_box(row, col);
 
         let mut pen_x: f32 = cell_box.x as f32;
@@ -728,7 +716,7 @@ impl<'a> TextRenderer<'a> {
     }
 
     /// Underlines and strikethroughs share the underline renderer.
-    unsafe fn draw_decorations(
+    fn draw_decorations(
         &self,
         kind: DecorationKind,
         glyphs: &[TermGlyph],
@@ -762,13 +750,11 @@ impl<'a> TextRenderer<'a> {
             ),
         };
 
-        unsafe {
-            self.underline_renderer
-                .draw(&spans, &metrics, line_top, cell_bottom, proj)
-        };
+        self.underline_renderer
+            .draw(&spans, &metrics, line_top, cell_bottom, proj)
     }
 
-    unsafe fn draw_boxes(
+    fn draw_boxes(
         &self,
         glyphs: &[TermGlyph],
         widths: &[usize],
@@ -800,13 +786,11 @@ impl<'a> TextRenderer<'a> {
             x += cell_width * *cells_wide as f32;
         }
 
-        unsafe {
-            self.boxdraw_renderer
-                .draw(&cells, cell_width, cell_height, proj)
-        };
+        self.boxdraw_renderer
+            .draw(&cells, cell_width, cell_height, proj)
     }
 
-    pub unsafe fn draw_cursor(
+    pub fn draw_cursor(
         &mut self,
         row: i32,
         col: i32,

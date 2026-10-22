@@ -18,7 +18,7 @@ pub struct GridRenderer {
 }
 
 impl GridRenderer {
-    pub unsafe fn new(gl: Rc<glow::Context>) -> Self {
+    pub fn new(gl: Rc<glow::Context>) -> Self {
         unsafe {
             let program = include_shader!(gl, "grid");
             let vao = gl.create_vertex_array().expect("Cannot create VAO");
@@ -65,11 +65,11 @@ impl GridRenderer {
         }
     }
 
-    pub unsafe fn gl(&self) -> &glow::Context {
+    pub fn gl(&self) -> &glow::Context {
         &self.gl
     }
 
-    pub unsafe fn render(
+    pub fn render(
         &self,
         cell_size: (usize, usize),
         offset: (usize, usize),

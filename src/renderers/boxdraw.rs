@@ -37,7 +37,7 @@ pub struct BoxDrawRenderer {
 }
 
 impl BoxDrawRenderer {
-    pub unsafe fn new(gl: Rc<glow::Context>) -> Self {
+    pub fn new(gl: Rc<glow::Context>) -> Self {
         unsafe {
             let program = include_shader!(gl, "boxdraw");
             let vao = gl
@@ -80,13 +80,7 @@ impl BoxDrawRenderer {
     }
 
     /// Cell positions and size must be whole pixels so shapes stay crisp.
-    pub unsafe fn draw(
-        &self,
-        cells: &[BoxCell],
-        cell_width: f32,
-        cell_height: f32,
-        proj: &[f32; 16],
-    ) {
+    pub fn draw(&self, cells: &[BoxCell], cell_width: f32, cell_height: f32, proj: &[f32; 16]) {
         if cells.is_empty() {
             return;
         }

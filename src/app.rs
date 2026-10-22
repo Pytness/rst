@@ -134,7 +134,7 @@ impl<'a> App<'a> {
 
     /// SAFETY: This function should only be called after the OpenGL context has been created and made current in the `resumed` method.
     /// Calling this function before that will result in undefined behavior.
-    pub unsafe fn gl(&self) -> &glow::Context {
+    pub fn gl(&self) -> &glow::Context {
         self.gl.as_ref().expect("OpenGL context is not initialized")
     }
 
@@ -228,41 +228,39 @@ impl<'a> App<'a> {
         let height = self.term.win.h;
         let background_color = self.term.colors.get_from_glyph_color(config::DEFAULTBG);
 
-        unsafe {
-            self.quad_renderer = Some(renderers::QuadRenderer::new(
-                self.gl
+        self.quad_renderer = Some(renderers::QuadRenderer::new(
+            self.gl
+                .as_ref()
+                .expect("GL context is not initialized")
+                .clone(),
+            width as i32,
+            height as i32,
+        ));
+
+        if let Some(AppState {
+            gl_surface,
+            window: _window,
+        }) = self.app_state.as_ref()
+        {
+            let gl_context = self
+                .gl_handler
+                .gl_context
+                .as_ref()
+                .expect("GL context is not initialized");
+
+            for _i in 0..2 {
+                self.quad_renderer
                     .as_ref()
-                    .expect("GL context is not initialized")
-                    .clone(),
-                width as i32,
-                height as i32,
-            ));
+                    .expect("QuadRenderer is not initialized")
+                    .clear_section(
+                        0,
+                        0,
+                        width as i32,
+                        height as i32,
+                        background_color.as_f32_tuple(),
+                    );
 
-            if let Some(AppState {
-                gl_surface,
-                window: _window,
-            }) = self.app_state.as_ref()
-            {
-                let gl_context = self
-                    .gl_handler
-                    .gl_context
-                    .as_ref()
-                    .expect("GL context is not initialized");
-
-                for _i in 0..2 {
-                    self.quad_renderer
-                        .as_ref()
-                        .expect("QuadRenderer is not initialized")
-                        .clear_section(
-                            0,
-                            0,
-                            width as i32,
-                            height as i32,
-                            background_color.as_f32_tuple(),
-                        );
-
-                    let _ = gl_surface.swap_buffers(gl_context);
-                }
+                let _ = gl_surface.swap_buffers(gl_context);
             }
         }
     }
@@ -595,22 +593,20 @@ impl<'a> App<'a> {
                     }
 
                     let fontspects = self.xdrawglyphfontspecs(&[g]);
-                    unsafe {
-                        self.quad_renderer
-                            .as_ref()
-                            .expect("QuadRenderer is not initialized")
-                            .with(|| {
-                                self.text_renderer
-                                    .as_mut()
-                                    .expect("TextRenderer is not initialized")
-                                    .draw_glyphs(
-                                        &fontspects,
-                                        cy as i32,
-                                        cx as i32,
-                                        &ortho(win.w as f32, win.h as f32),
-                                    );
-                            });
-                    }
+                    self.quad_renderer
+                        .as_ref()
+                        .expect("QuadRenderer is not initialized")
+                        .with(|| {
+                            self.text_renderer
+                                .as_mut()
+                                .expect("TextRenderer is not initialized")
+                                .draw_glyphs(
+                                    &fontspects,
+                                    cy as i32,
+                                    cx as i32,
+                                    &ortho(win.w as f32, win.h as f32),
+                                );
+                        });
                 }
 
                 cursor_style => {
@@ -618,23 +614,21 @@ impl<'a> App<'a> {
                         return;
                     }
 
-                    unsafe {
-                        self.quad_renderer
-                            .as_ref()
-                            .expect("QuadRenderer is not initialized")
-                            .with(|| {
-                                self.text_renderer
-                                    .as_mut()
-                                    .expect("TextRenderer is not initialized")
-                                    .draw_cursor(
-                                        cy as i32,
-                                        cx as i32,
-                                        drawcol.as_f32_array(),
-                                        cursor_style,
-                                        2,
-                                    );
-                            });
-                    }
+                    self.quad_renderer
+                        .as_ref()
+                        .expect("QuadRenderer is not initialized")
+                        .with(|| {
+                            self.text_renderer
+                                .as_mut()
+                                .expect("TextRenderer is not initialized")
+                                .draw_cursor(
+                                    cy as i32,
+                                    cx as i32,
+                                    drawcol.as_f32_array(),
+                                    cursor_style,
+                                    2,
+                                );
+                        });
                 }
             }
         }
@@ -660,19 +654,17 @@ impl<'a> App<'a> {
         let glyphs = &line[x1 as usize..x2];
         let glyphs: Vec<TermGlyph> = self.xdrawglyphfontspecs(&glyphs);
 
-        unsafe {
-            self.quad_renderer
-                .as_ref()
-                .expect("QuadRenderer is not initialized")
-                .with(|| {
-                    let proj = ortho(self.term.win.w as f32, self.term.win.h as f32);
+        self.quad_renderer
+            .as_ref()
+            .expect("QuadRenderer is not initialized")
+            .with(|| {
+                let proj = ortho(self.term.win.w as f32, self.term.win.h as f32);
 
-                    self.text_renderer
-                        .as_mut()
-                        .expect("TextRenderer is not initialized")
-                        .draw_glyphs(&glyphs, y1 as i32, x1 as i32, &proj);
-                });
-        }
+                self.text_renderer
+                    .as_mut()
+                    .expect("TextRenderer is not initialized")
+                    .draw_glyphs(&glyphs, y1 as i32, x1 as i32, &proj);
+            });
     }
 
     fn xdrawglyphfontspecs(&self, glyphs: &[Glyph]) -> Vec<TermGlyph> {
@@ -817,12 +809,11 @@ impl<'a> App<'a> {
                         .as_ref()
                         .expect("GL context is not initialized");
 
-                    unsafe {
-                        self.quad_renderer
-                            .as_ref()
-                            .expect("QuadRenderer is not initialized")
-                            .render();
-                    }
+                    self.quad_renderer
+                        .as_ref()
+                        .expect("QuadRenderer is not initialized")
+                        .render();
+
                     gl_surface
                         .swap_buffers(gl_context)
                         .expect("Failed to swap GL buffers");
@@ -944,7 +935,7 @@ impl<'a> ApplicationHandler for App<'a> {
         self.term.win.cw = font_size.width as u32;
         self.term.win.ch = font_size.height as u32;
 
-        self.quad_renderer.get_or_insert_with(|| unsafe {
+        self.quad_renderer.get_or_insert_with(|| {
             renderers::QuadRenderer::new(
                 self.gl
                     .as_ref()
@@ -1095,10 +1086,21 @@ impl<'a> ApplicationHandler for App<'a> {
                 self.term.state.tsetdirtattr(GlyphAttribute::ATTR_BLINK);
 
                 self.loop_timeout = config::BLINK_TIMEOUT as f64;
+
+                self.drawing = true;
             }
         }
 
-        self.draw();
+        // HACK: quick and dirty way to avoid constantly drawing.
+        // needs to be fixed properly, but for now it works.
+        if self.drawing {
+            let draw_start = Instant::now();
+            self.draw();
+            let draw_end = Instant::now();
+            let draw_duration = draw_end.duration_since(draw_start);
+            println!("Draw took {:?}", draw_duration);
+        }
+
         self.drawing = false;
 
         if let Some(window) = self.app_state.as_ref().map(|s| &s.window) {
