@@ -182,7 +182,7 @@ impl<'a> App<'a> {
         // custom keys from config
         let key = Key::from_event(&event, code);
         if let Some(customkey) = kmap(key, self.keyboard_modifiers, self.term.win.mode) {
-            self.term.ttywrite(customkey, customkey.len(), true);
+            self.term.ttywrite(customkey, true);
             return;
         }
 
@@ -219,7 +219,7 @@ impl<'a> App<'a> {
             }
         }
 
-        self.term.ttywrite(&buffer, len, true);
+        self.term.ttywrite(&buffer, true);
     }
     pub fn cmessage(&mut self) {}
 
@@ -348,7 +348,7 @@ impl<'a> App<'a> {
 
             let msg = format!("\x1b[48;{};{};{};{}t", row, col, pixw, pixh);
 
-            term.ttywrite(msg.as_bytes(), msg.len(), true);
+            term.ttywrite(msg.as_bytes(), true);
         }
     }
 

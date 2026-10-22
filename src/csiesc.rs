@@ -1,5 +1,3 @@
-use std::ptr::null_mut;
-
 use crate::config::VTIDEN;
 use crate::sixel::{DECSIXEL_HEIGHT_MAX, DECSIXEL_PALETTE_MAX, DECSIXEL_WIDTH_MAX};
 use crate::snprintf;
@@ -140,7 +138,7 @@ impl CSIEscape {
             // Reply: VTIDEN, CSI ? 62 ; 4 c (VT220 with sixel graphics).
             b'c' => {
                 if self.arg[0] == 0 {
-                    state.ttywrite_pty(VTIDEN, VTIDEN.len());
+                    state.ttywrite_pty(VTIDEN);
                 }
             }
 
@@ -305,8 +303,8 @@ impl CSIEscape {
                         if pi == 1 && pa_is_valid {
                             // number of sixel color registers
                             // (read, reset and read the maximum value give the same response)
-                            let n = snprintf!(buffer, b"\x1b[?1;0;%dS\0", DECSIXEL_PALETTE_MAX);
-                            term.ttywrite(&buffer, n as usize, true);
+                            let n = snprintf!(buffer, b"\x1b[?1;0;%dS\0", DECSIXEL_PALETTE_MAX) as usize;
+                            term.ttywrite(&buffer[..n], true);
                         } else if pi == 2 && pa_is_valid {
                             // sixel graphics geometry (in pixels)
                             // (read, reset and read the maximum value give the same response)
@@ -314,15 +312,15 @@ impl CSIEscape {
                             let n = snprintf!(buffer, b"\x1b[?2;0;%d;%dS\0",
                                     (state.col * win.cw as usize).min(DECSIXEL_WIDTH_MAX),
                                     (state.row * win.ch as usize).min(DECSIXEL_HEIGHT_MAX)
-                                );
+                                ) as usize;
 
-                            term.ttywrite(&buffer, n as usize, true);
+                            term.ttywrite(&buffer[..n], true);
                         } else {
                             // the number of color registers and sixel geometry can't be changed
                             // failure
-                            let n = snprintf!(buffer, b"\x1b[?%d;3;0S\0", pi);
+                            let n = snprintf!(buffer, b"\x1b[?%d;3;0S\0", pi) as usize;
 
-                            state.ttywrite_pty(&buffer, n as usize);
+                            state.ttywrite_pty(&buffer[..n]);
                         }
                     }
 
@@ -411,13 +409,12 @@ impl CSIEscape {
                 let term = unsafe {&mut *state._term_ptr};
                 match self.arg[0] {
                     5 => {
-                        const TEXT: &[u8] = b"\x1b[0n";
-                        term.ttywrite(TEXT, TEXT.len(), false);
+                        term.ttywrite(b"\x1b[0n", false);
                     },
                     6 => {
                         let mut buffer = [0u8; 40];
-                        let len = snprintf!(buffer, b"\x1b[%i;%iR\0", state.c.y + 1, state.c.x + 1);
-                        term.ttywrite(&buffer, len as usize, false);
+                        let len = snprintf!(buffer, b"\x1b[%i;%iR\0", state.c.y + 1, state.c.x + 1) as usize;
+                        term.ttywrite(&buffer[..len], false);
                     }
                     _ => unknown(),
 
@@ -480,8 +477,7 @@ impl CSIEscape {
                     // Reply: DCS > | text ST.
                     b'q' => {
                         // TODO: implement better version reporting
-                        const TEXT: &[u8] = b"\x1bP>|rst(0.1)\x1b\\";
-                        state.ttywrite_pty(TEXT, TEXT.len());
+                        state.ttywrite_pty(b"\x1bP>|rst(0.1)\x1b\\");
                     }
                     _ => unknown(),
                 }
@@ -496,8 +492,8 @@ impl CSIEscape {
                 let mut buffer = [0u8; 40];
                 match self.arg[0] {
                     14 => {
-                        let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", state.pixh, state.pixw);
-                        term.ttywrite(&buffer, len as usize, false);
+                        let len = snprintf!(buffer, b"\x1b[4;%i;%it\0", state.pixh, state.pixw) as usize;
+                        term.ttywrite(&buffer[..len], false);
                     }
 
                     16 => {
@@ -506,13 +502,14 @@ impl CSIEscape {
                             b"\x1b[6;%i;%it\0",
                             state.pixh / state.row,
                             state.pixw / state.col
-                        );
-                        term.ttywrite(&buffer, len as usize, false);
+                        ) as usize;
+
+                        term.ttywrite(&buffer[..len], false);
                     }
 
                     18 => {
-                        let len = snprintf!(buffer, b"\x1b[8;%i;%it\0", state.row, state.col);
-                        term.ttywrite(&buffer, len as usize, false);
+                        let len = snprintf!(buffer, b"\x1b[8;%i;%it\0", state.row, state.col) as usize;
+                        term.ttywrite(&buffer[..len], false);
                     }
 
                     _ => unknown(),
@@ -548,8 +545,8 @@ impl CSIEscape {
 
                         let mut buffer = [0u8; 40];
                         let len =
-                            snprintf!(buffer, b"\x1b[?%d;%d$y\0", self.arg[0], feature_mode);
-                        state.ttywrite_pty(&buffer, len as usize);
+                            snprintf!(buffer, b"\x1b[?%d;%d$y\0", self.arg[0], feature_mode) as usize;
+                        state.ttywrite_pty(&buffer[..len]);
                     }
                     _ => unknown(),
                 }

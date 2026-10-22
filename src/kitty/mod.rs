@@ -21,7 +21,8 @@ pub fn tsetdecorstyle(g: &mut Glyph, style: u32) {
     g.decoration = (g.decoration & !(0x7 << 25)) | ((style & 0x7) << 25);
 }
 
-pub fn tdefcolor(attr: &[i32], npar: &mut usize, l: usize) -> i32 {
+pub fn tdefcolor(attr: &[i32], npar: &mut usize) -> i32 {
+    let l = attr.len();
     let mut idx = -1;
     let r;
     let g;
@@ -76,7 +77,7 @@ pub fn tdefcolor(attr: &[i32], npar: &mut usize, l: usize) -> i32 {
             _ => {
                 eprintln!("erresc(38): gfx attr {} unkown", attr[*npar]);
             }
-        }
+    }
 
     idx
 }

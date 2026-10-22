@@ -412,7 +412,7 @@ impl StrEscape {
                 osc_name
             );
         } else {
-            unsafe { (*term_ptr).ttywrite(&buffer, n, true) };
+            unsafe { (*term_ptr).ttywrite(&buffer[..n], true) };
         }
     }
 }

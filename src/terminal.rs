@@ -154,16 +154,17 @@ impl Term {
         }
     }
 
-    pub fn ttywrite(&mut self, buffer: &[u8], len: usize, may_echo: bool) {
+    pub fn ttywrite(&mut self, buffer: &[u8], may_echo: bool) {
         if may_echo && self.state.mode.contains(TermMode::Echo) {
-            self.twrite(&buffer, len, true);
+            self.twrite(&buffer, true);
         }
 
         if !self.state.mode.contains(TermMode::Crlf) {
-            self.ttywriteraw_pty(buffer, len);
+            self.ttywriteraw_pty(buffer);
             return;
         }
 
+        let len = buffer.len();
         let mut n = len as isize;
         let mut start = 0;
         let mut next;
@@ -172,14 +173,14 @@ impl Term {
         while n > 0 {
             if buffer[start] == b'\r' {
                 next = 1;
-                self.ttywriteraw_pty(b"\r\n", 2);
+                self.ttywriteraw_pty(b"\r\n");
             } else {
                 next = buffer
                     .iter()
                     .position(|&b| b == b'\r')
                     .unwrap_or(n as usize);
 
-                self.ttywriteraw_pty(&buffer[start..next], next - start);
+                self.ttywriteraw_pty(&buffer[start..next]);
             }
 
             n -= next as isize - start as isize;
@@ -187,7 +188,8 @@ impl Term {
         }
     }
 
-    fn twrite(&mut self, buffer: &[u8], buflen: usize, show_ctrl: bool) -> usize {
+    fn twrite(&mut self, buffer: &[u8], show_ctrl: bool) -> usize {
+        let buflen = buffer.len();
         let mut charsize;
         let mut i = 0;
         let mut u: char;
@@ -258,11 +260,11 @@ impl Term {
         return i;
     }
 
-    pub fn ttywriteraw_pty(&mut self, buffer: &[u8], len: usize) {
+    pub fn ttywriteraw_pty(&mut self, buffer: &[u8]) {
         let mut rfd: libc::fd_set = unsafe { std::mem::zeroed() };
         let mut wfd: libc::fd_set = unsafe { std::mem::zeroed() };
 
-        let mut n = len;
+        let mut n = buffer.len();
         let mut s: *const libc::c_void = buffer.as_ptr() as *const libc::c_void;
         let mut lim: usize = 256;
         let mut retries_left = 100;
@@ -363,7 +365,7 @@ impl Term {
         };
 
         if self.state.mode.contains(TermMode::Print) {
-            self.tprinter(&utfbuf, len);
+            self.tprinter(&utfbuf[..len]);
         }
 
         /*
@@ -496,9 +498,9 @@ impl Term {
         self.state.tputc_char(u);
     }
 
-    fn tprinter(&self, s: &[u8], len: usize) {
+    fn tprinter(&self, s: &[u8]) {
         unsafe {
-            if IOFD >= 0 && xwrite(IOFD, s, len) < 0 {
+            if IOFD >= 0 && xwrite(IOFD, s) < 0 {
                 eprintln!("Error writing to output file");
                 libc::close(IOFD);
                 IOFD = -1;
@@ -648,7 +650,7 @@ impl Term {
             // DECID -- Identify Terminal (0x9A)
             // Obsolete form of DA (CSI c). Reply: VTIDEN.
             0x9a => {
-                self.ttywrite(VTIDEN, VTIDEN.len(), false);
+                self.ttywrite(VTIDEN, false);
                 interrupt_sequence = true;
             }
 
@@ -806,7 +808,7 @@ impl Term {
             // DECID -- Identify Terminal: ESC Z
             // Obsolete form of DA (CSI c). Reply: VTIDEN.
             'Z' => {
-                self.ttywrite(VTIDEN, VTIDEN.len(), false);
+                self.ttywrite(VTIDEN, false);
             }
             // RIS -- Reset to Initial State: ESC c
             // Full reset: screen, modes, tab stops, charsets, title and colors.
@@ -967,7 +969,7 @@ impl Term {
 
                     loop {
                         let buflen_before_processing = BUF_WRITTEN;
-                        written += self.twrite(&BUF[written..], BUF_WRITTEN - written, false);
+                        written += self.twrite(&BUF[written..BUF_WRITTEN], false);
 
                         // If buflen changed during the call to twrite, there is
                         // new data, and we need to keep processing, otherwise
@@ -1052,7 +1054,7 @@ impl Term {
         self.win.mode.insert(WinMode::Focused);
 
         if self.win.mode.contains(WinMode::Focus) {
-            self.ttywrite(b"\x1b[I", 3, false);
+            self.ttywrite(b"\x1b[I", false);
         }
     }
 
@@ -1060,7 +1062,7 @@ impl Term {
         self.win.mode.remove(WinMode::Focused);
 
         if self.win.mode.contains(WinMode::Focus) {
-            self.ttywrite(b"\x1b[O", 3, false);
+            self.ttywrite(b"\x1b[O", false);
         }
     }
 }
@@ -1188,7 +1190,8 @@ fn execsh(cmd: Option<&CStr>, args: Option<&[&CStr]>) {
     }
 }
 
-fn xwrite(fd: i32, buffer: &[u8], len: usize) -> isize {
+fn xwrite(fd: i32, buffer: &[u8]) -> isize {
+    let len = buffer.len();
     let total_len: usize = len;
     let mut len = len;
     let mut r;

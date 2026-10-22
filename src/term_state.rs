@@ -923,12 +923,13 @@ impl TermState {
     }
 
     /// Write bytes directly to the pty (no echo processing).
-    pub fn ttywrite_pty(&mut self, buffer: &[u8], len: usize) {
+    pub fn ttywrite_pty(&mut self, buffer: &[u8]) {
         if !self.mode.contains(TermMode::Crlf) {
-            self.ttywriteraw_pty(buffer, len);
+            self.ttywriteraw_pty(buffer);
             return;
         }
 
+        let len = buffer.len();
         // This is similar to how the kernel handles ONLCR for ttys
         let mut i = 0;
         // TODO: check if this is correct
@@ -945,14 +946,14 @@ impl TermState {
                     .unwrap_or(len - i)
                     + i;
 
-                self.ttywriteraw_pty(&buffer[i..], next - i);
+                self.ttywriteraw_pty(&buffer[i..next]);
                 i = next;
             }
         }
     }
 
-    fn ttywriteraw_pty(&mut self, buffer: &[u8], len: usize) {
-        unsafe { (*self._term_ptr).ttywriteraw_pty(buffer, len) }
+    fn ttywriteraw_pty(&mut self, buffer: &[u8]) {
+        unsafe { (*self._term_ptr).ttywriteraw_pty(buffer) }
     }
 
     pub fn tputc_char(&mut self, u: char) {
@@ -1450,7 +1451,7 @@ impl TermState {
                 // - 38 ; 5 ; Ps or 38 : 5 : Ps: indexed color 0-255.
                 // - 38 ; 2 ; Pr ; Pg ; Pb or 38 : 2 : Pi : Pr : Pg : Pb: direct RGB (Pi = colorspace id).
                 38 => {
-                    let idx = tdefcolor(&attr, &mut i, l);
+                    let idx = tdefcolor(&attr, &mut i);
 
                     if idx >= 0 {
                         self.c.attr.fg = idx as u32;
@@ -1464,7 +1465,7 @@ impl TermState {
 
                 // 48 -- Set background color, same parameters as 38
                 48 => {
-                    let idx = tdefcolor(&attr, &mut i, l);
+                    let idx = tdefcolor(&attr, &mut i);
 
                     if idx >= 0 {
                         self.c.attr.bg = idx as u32;
@@ -1478,7 +1479,7 @@ impl TermState {
 
                 // 58 -- Set underline color, same parameters as 38
                 58 => {
-                    let idx = tdefcolor(&attr, &mut i, l);
+                    let idx = tdefcolor(&attr, &mut i);
 
                     if idx >= 0 {
                         let g = &mut self.c.attr;
