@@ -186,11 +186,36 @@ impl<'a> TextRenderer<'a> {
         // implicitly permit unsafe calls without an unsafe{} block.
         let program = unsafe { include_shader!(gl, "font") };
 
-        let vao = unsafe {
-            gl.create_vertex_array()
-                .expect("failed to create glyph VAO")
+        let (vao, vbo) = unsafe {
+            let vao = gl
+                .create_vertex_array()
+                .expect("failed to create glyph VAO");
+            let vbo = gl.create_buffer().expect("failed to create glyph VBO");
+
+            let stride = size_of::<Vertex>() as i32;
+            let uv_offset = offset_of!(Vertex, uv) as i32;
+            let color_offset = offset_of!(Vertex, color) as i32;
+            let is_color_offset = offset_of!(Vertex, is_color) as i32;
+
+            gl.bind_vertex_array(Some(vao));
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+
+            gl.enable_vertex_attrib_array(0);
+            gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, stride, 0);
+
+            gl.enable_vertex_attrib_array(1);
+            gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, stride, uv_offset);
+
+            gl.enable_vertex_attrib_array(2);
+            gl.vertex_attrib_pointer_f32(2, 3, glow::FLOAT, false, stride, color_offset);
+
+            gl.enable_vertex_attrib_array(3);
+            gl.vertex_attrib_pointer_f32(3, 1, glow::FLOAT, false, stride, is_color_offset);
+
+            gl.bind_buffer(glow::ARRAY_BUFFER, None);
+            gl.bind_vertex_array(None);
+            (vao, vbo)
         };
-        let vbo = unsafe { gl.create_buffer().expect("failed to create glyph VBO") };
 
         let u_proj = unsafe { gl.get_uniform_location(program, "u_proj") };
         let u_tex = unsafe { gl.get_uniform_location(program, "u_font") };
@@ -496,11 +521,6 @@ impl<'a> TextRenderer<'a> {
         let units_per_em = self.units_per_em();
         let px_size = self.px_size;
 
-        let stride = size_of::<Vertex>() as i32;
-        let uv_offset = offset_of!(Vertex, uv) as i32;
-        let color_offset = offset_of!(Vertex, color) as i32;
-        let is_color_offset = offset_of!(Vertex, is_color) as i32;
-
         let cached_glyphs: Vec<_> = glyphs
             .iter()
             .zip(shaped.iter())
@@ -533,19 +553,6 @@ impl<'a> TextRenderer<'a> {
             let gl = self.gl.as_ref();
 
             gl.bind_vertex_array(Some(self.vao));
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
-
-            gl.enable_vertex_attrib_array(0);
-            gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, stride, 0);
-
-            gl.enable_vertex_attrib_array(1);
-            gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, stride, uv_offset);
-
-            gl.enable_vertex_attrib_array(2);
-            gl.vertex_attrib_pointer_f32(2, 3, glow::FLOAT, false, stride, color_offset);
-
-            gl.enable_vertex_attrib_array(3);
-            gl.vertex_attrib_pointer_f32(3, 1, glow::FLOAT, false, stride, is_color_offset);
 
             gl.use_program(Some(self.program));
 
