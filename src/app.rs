@@ -198,12 +198,13 @@ impl<'a> App<'a> {
             return;
         }
 
-        let mut buffer = [b'\0'; 64];
-        buffer[..len].copy_from_slice(&bytes.iter().take(len).cloned().collect::<Vec<u8>>());
-
         const MOD1: bool = false;
+        // FIXME: buffer writing might be wrong
         // TODO: if (len == 1 && e->state & Mod1Mask)
         if len == 1 && MOD1 {
+            let mut buffer = Vec::with_capacity(len);
+            buffer[..len].copy_from_slice(&bytes.iter().take(len).cloned().collect::<Vec<u8>>());
+
             eprintln!("Single character input: {}", buffer[0] as char);
             if self.term.win.mode.contains(WinMode::EightBit) || true {
                 eprintln!("8-bit mode enabled, treating input as 8-bit character");
@@ -217,9 +218,11 @@ impl<'a> App<'a> {
                 buffer[0] = b'\x1b';
                 len = 2;
             }
-        }
 
-        self.term.ttywrite(&buffer, true);
+            self.term.ttywrite(&buffer[..len], true);
+        } else {
+            self.term.ttywrite(bytes, true);
+        }
     }
     pub fn cmessage(&mut self) {}
 
