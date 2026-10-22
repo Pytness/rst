@@ -10,6 +10,7 @@ pub struct QuadRenderer {
     vao: glow::NativeVertexArray,
     fbo: glow::NativeFramebuffer,
     color_tex: glow::NativeTexture,
+    u_tex: glow::UniformLocation,
 }
 
 impl QuadRenderer {
@@ -19,9 +20,14 @@ impl QuadRenderer {
             let vao = gl.create_vertex_array().expect("failed to create quad VAO");
             let vbo = gl.create_buffer().expect("failed to create quad VBO");
             let fbo = gl.create_framebuffer().expect("failed to create quad FBO");
+
             let color_tex = gl
                 .create_texture()
                 .expect("failed to create quad color texture");
+
+            let u_tex = gl
+                .get_uniform_location(program, "u_tex")
+                .expect("failed to get uniform location for u_tex");
 
             // Fullscreen quad vertex data: (pos.x, pos.y, uv.x, uv.y) x 6
             #[rustfmt::skip]
@@ -100,6 +106,7 @@ impl QuadRenderer {
                 vao,
                 fbo,
                 color_tex,
+                u_tex,
             }
         }
     }
@@ -114,9 +121,7 @@ impl QuadRenderer {
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(glow::TEXTURE_2D, Some(self.color_tex));
 
-            if let Some(loc) = gl.get_uniform_location(self.program, "u_tex") {
-                gl.uniform_1_i32(Some(&loc), 0);
-            }
+            gl.uniform_1_i32(Some(&self.u_tex), 0);
 
             gl.draw_arrays(glow::TRIANGLES, 0, 6);
 
